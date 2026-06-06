@@ -47,6 +47,6 @@ def run_agent(
         agent_id=role.agent_id,
         role=role.name,
         message_type=role.message_type,
-        content=model.model_dump(),
+        content=model.model_dump(mode="json"),
         timestamp=timestamp or now_iso(),
     )

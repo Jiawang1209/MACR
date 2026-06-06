@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from macr.agent import run_agent
+from macr.agent import AgentError, run_agent
 from macr.human_gate import interactive_human_gate
 from macr.llm import LLM
 from macr.roles import EVALUATOR, EXECUTOR, PLANNER, REVIEWER
@@ -48,48 +48,57 @@ def run_task(
     log.write_input(task)
     task_id = run_id
 
-    # --- Planner (once) ---
-    planner_msg = run_agent(PLANNER, state, llm, task_id=task_id, run_id=run_id)
-    state.agent_outputs["planner"].append(planner_msg.content)
-    state.task_plan = list(planner_msg.content.get("steps", []))
-    log.write_planner(planner_msg.content)
-    printer(f"[planner] {planner_msg.content.get('summary', '')}")
+    try:
+        try:
+            # --- Planner (once) ---
+            planner_msg = run_agent(PLANNER, state, llm, task_id=task_id, run_id=run_id)
+            state.agent_outputs["planner"].append(planner_msg.content)
+            state.task_plan = list(planner_msg.content.get("steps", []))
+            log.write_planner(planner_msg.content)
+            printer(f"[planner] {planner_msg.content.get('summary', '')}")
 
-    # --- Execute / Review / Evaluate loop ---
-    total_attempts = max_revisions + 1
-    for attempt in range(1, total_attempts + 1):
-        executor_msg = run_agent(EXECUTOR, state, llm, task_id=task_id, run_id=run_id)
-        state.agent_outputs["executor"].append(executor_msg.content)
-        log.write_executor(executor_msg.content, attempt)
-        printer(f"[executor #{attempt}] {executor_msg.content.get('notes', '') or 'artifact produced'}")
+            # --- Execute / Review / Evaluate loop ---
+            total_attempts = max_revisions + 1
+            for attempt in range(1, total_attempts + 1):
+                executor_msg = run_agent(EXECUTOR, state, llm, task_id=task_id, run_id=run_id)
+                state.agent_outputs["executor"].append(executor_msg.content)
+                log.write_executor(executor_msg.content, attempt)
+                printer(f"[executor #{attempt}] {executor_msg.content.get('notes', '') or 'artifact produced'}")
 
-        reviewer_msg = run_agent(REVIEWER, state, llm, task_id=task_id, run_id=run_id)
-        state.agent_outputs["reviewer"].append(reviewer_msg.content)
-        state.reviews.append(reviewer_msg.content)
-        log.write_reviewer(reviewer_msg.content)
-        printer(f"[reviewer] {reviewer_msg.content.get('decision', '')}")
+                reviewer_msg = run_agent(REVIEWER, state, llm, task_id=task_id, run_id=run_id)
+                state.agent_outputs["reviewer"].append(reviewer_msg.content)
+                state.reviews.append(reviewer_msg.content)
+                log.write_reviewer(reviewer_msg.content)
+                printer(f"[reviewer] {reviewer_msg.content.get('decision', '')}")
 
-        evaluator_msg = run_agent(EVALUATOR, state, llm, task_id=task_id, run_id=run_id)
-        state.agent_outputs["evaluator"].append(evaluator_msg.content)
-        decision = evaluator_msg.content["decision"]
-        state.decisions.append({"attempt": attempt, "decision": decision})
-        log.write_evaluator(evaluator_msg.content)
-        printer(f"[evaluator] {decision}")
+                evaluator_msg = run_agent(EVALUATOR, state, llm, task_id=task_id, run_id=run_id)
+                state.agent_outputs["evaluator"].append(evaluator_msg.content)
+                decision = evaluator_msg.content["decision"]
+                state.decisions.append({"attempt": attempt, "decision": decision})
+                log.write_evaluator(evaluator_msg.content)
+                printer(f"[evaluator] {decision}")
 
-        if decision == Decision.PASS.value:
-            break
-        if decision == Decision.BLOCKED.value:
-            break
-        # NEEDS_FIX: loop again if budget remains, else fall through to gate
-        if attempt >= total_attempts:
-            break
+                if decision == Decision.PASS.value:
+                    break
+                if decision == Decision.BLOCKED.value:
+                    break
+                # NEEDS_FIX: loop again if budget remains, else fall through to gate
+                if attempt >= total_attempts:
+                    break
+        except AgentError as exc:
+            # spec §6: a role that fails schema validation twice -> BLOCKED -> Human Gate
+            state.decisions.append(
+                {"attempt": len(state.decisions) + 1, "decision": Decision.BLOCKED.value, "error": str(exc)}
+            )
+            printer(f"[blocked] {exc}")
 
-    # --- Human Gate ---
-    feedback = human_gate(state, printer=printer)
-    state.human_feedback = feedback
-    final = _build_final(state)
-    state.final_output = final
-    log.write_final(final)
-    log.write_state(state)
-    printer(f"[human] {feedback.decision}")
+        # --- Human Gate ---
+        feedback = human_gate(state, printer=printer)
+        state.human_feedback = feedback
+        final = _build_final(state)
+        state.final_output = final
+        log.write_final(final)
+        printer(f"[human] {feedback.decision}")
+    finally:
+        log.write_state(state)
     return state

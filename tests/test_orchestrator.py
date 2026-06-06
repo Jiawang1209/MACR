@@ -95,3 +95,26 @@ def test_reject_sets_feedback(tmp_path):
         human_gate=reject_gate, printer=lambda *_: None, today="20260606",
     )
     assert state.human_feedback.decision == "reject"
+
+
+def test_agent_failure_routes_to_blocked_gate_and_persists_state(tmp_path):
+    # Planner returns invalid output twice -> AgentError -> BLOCKED -> still reaches gate
+    llm = FakeLLM([{"bad": 1}, {"still": "bad"}])
+    state = run_task(
+        "task", llm, tmp_path, max_revisions=2,
+        human_gate=_approve_gate, printer=lambda *_: None, today="20260606",
+    )
+    assert any(d["decision"] == "BLOCKED" for d in state.decisions)
+    assert state.human_feedback is not None  # gate was reached, not aborted
+    assert (tmp_path / "R20260606_001" / "state.json").exists()
+
+
+def test_decisions_are_plain_strings_not_enums(tmp_path):
+    llm = FakeLLM([_plan(), _exec(1), _review("approve"), _eval("PASS")])
+    state = run_task(
+        "task", llm, tmp_path, max_revisions=2,
+        human_gate=_approve_gate, printer=lambda *_: None, today="20260606",
+    )
+    # content went through model_dump(mode="json") so decision is a str, not an enum member
+    assert state.decisions[-1]["decision"] == "PASS"
+    assert type(state.decisions[-1]["decision"]) is str
