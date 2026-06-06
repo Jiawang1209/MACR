@@ -139,3 +139,23 @@ Task → Supervisor 拆解 → Planner → Executor → Reviewer → Evaluator(P
 - [`docs/workflow_templates.md`](docs/workflow_templates.md) — 工作流模式
 - [`docs/roadmap.md`](docs/roadmap.md) — 路线图
 - [`examples/`](examples/) — 应用示例(占位)
+
+---
+
+## 运行 CLI MVP (V1) / Running the CLI MVP
+
+> 仅在项目专属虚拟环境中运行,不污染基础环境 / Project-local venv only.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+
+# 跑测试 / run tests (no network)
+.venv/bin/pytest
+
+# 真实运行一条任务 / run a real task (needs an API key)
+export ANTHROPIC_API_KEY=sk-...
+.venv/bin/macr run "写一个判断回文的 Python 函数"
+```
+
+产物写入 `.macr/runs/<run_id>/`:`input.md` / `planner.output.md` / `executor.output.md` / `reviewer.output.md` / `evaluator.output.json` / `state.json` / `final.md`。
