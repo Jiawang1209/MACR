@@ -43,6 +43,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     discuss_p.add_argument("--timeout", type=int, default=1800)
     discuss_p.add_argument("--auto", action="store_true", help="skip round-boundary pauses")
     discuss_p.add_argument("--no-subagents", action="store_true")
+    discuss_p.add_argument("--tui", action="store_true", help="rich two-pane live view (needs a real terminal)")
     return parser.parse_args(argv)
 
 
@@ -104,9 +105,10 @@ def _collab_command(args, *, claude_backend, codex_backend, human_gate) -> int:
 
 
 def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
-                     discussion_control, consensus_gate, human_gate) -> int:
+                     discussion_control, consensus_gate, human_gate, view) -> int:
     from macr.discussion import run_discuss
     from macr.discussion_control import auto_discussion_control, interactive_discussion_control
+    from macr.discussion_view import ConsoleView, TwoPaneView
 
     if claude_backend is None or codex_backend is None or impl_codex_backend is None:
         missing = [b for b in ("claude", "codex") if shutil.which(b) is None]
@@ -125,20 +127,34 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
             impl_codex_backend = CodexCliBackend(model=args.codex_model, timeout=args.timeout,
                                                  enable_subagents=enable, sandbox="workspace-write")
 
+    if view is None:
+        if getattr(args, "tui", False) and sys.stdout.isatty():
+            view = TwoPaneView(topic=args.task)
+        else:
+            view = ConsoleView()
+
+    tui_active = isinstance(view, TwoPaneView) and view.enabled
     if discussion_control is None:
-        discussion_control = auto_discussion_control if args.auto else interactive_discussion_control
+        discussion_control = view.control if tui_active else (
+            auto_discussion_control if getattr(args, "auto", False) else interactive_discussion_control)
+    if consensus_gate is None:
+        from macr.human_gate import consensus_human_gate
+        consensus_gate = view.consensus_gate if tui_active else consensus_human_gate
+    if human_gate is None:
+        human_gate = view.final_gate if tui_active else collab_human_gate
 
     try:
-        state = run_discuss(
-            args.task,
-            repo=Path(args.repo).resolve(),
-            test_cmd=shlex.split(args.test_cmd),
-            claude_backend=claude_backend, codex_backend=codex_backend, impl_codex_backend=impl_codex_backend,
-            runs_dir=Path(".macr/runs").resolve(), worktrees_dir=Path(".macr/worktrees").resolve(),
-            max_rounds=args.max_rounds, max_revisions=args.max_revisions,
-            discussion_control=discussion_control, consensus_gate=consensus_gate, human_gate=human_gate,
-            timeout=args.timeout,
-        )
+        with view:
+            state = run_discuss(
+                args.task,
+                repo=Path(args.repo).resolve(),
+                test_cmd=shlex.split(args.test_cmd),
+                claude_backend=claude_backend, codex_backend=codex_backend, impl_codex_backend=impl_codex_backend,
+                runs_dir=Path(".macr/runs").resolve(), worktrees_dir=Path(".macr/worktrees").resolve(),
+                max_rounds=args.max_rounds, max_revisions=args.max_revisions,
+                discussion_control=discussion_control, consensus_gate=consensus_gate, human_gate=human_gate,
+                view=view, timeout=args.timeout,
+            )
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -147,19 +163,17 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
 
 def main(argv: list[str] | None = None, *, llm=None,
          claude_backend=None, codex_backend=None, impl_codex_backend=None,
-         human_gate=None, discussion_control=None, consensus_gate=None) -> int:
+         human_gate=None, discussion_control=None, consensus_gate=None, view=None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     if args.command == "collab":
         gate = human_gate or collab_human_gate
         return _collab_command(args, claude_backend=claude_backend, codex_backend=codex_backend, human_gate=gate)
     if args.command == "discuss":
-        from macr.human_gate import consensus_human_gate
         return _discuss_command(
             args, claude_backend=claude_backend, codex_backend=codex_backend,
             impl_codex_backend=impl_codex_backend,
-            discussion_control=discussion_control,
-            consensus_gate=consensus_gate or consensus_human_gate,
-            human_gate=human_gate or collab_human_gate)
+            discussion_control=discussion_control, consensus_gate=consensus_gate,
+            human_gate=human_gate, view=view)
     gate = human_gate or interactive_human_gate
     return _run_command(args, llm=llm, human_gate=gate)
 

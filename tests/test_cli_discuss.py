@@ -4,6 +4,7 @@ from pathlib import Path
 from macr import cli
 from macr.agents.base import FakeAgentBackend
 from macr.discussion_control import ControlDecision
+from macr.discussion_view import FakeView
 from macr.schemas import HumanFeedback
 
 
@@ -64,3 +65,34 @@ def test_discuss_abort_returns_one(tmp_path, monkeypatch):
         discussion_control=lambda s, r, **kw: ControlDecision("abort"),
     )
     assert rc == 1
+
+
+def test_discuss_tui_flag_falls_back_non_tty(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(
+        ["discuss", "build it", "--repo", str(repo), "--test-cmd", "true", "--max-rounds", "1", "--tui"],
+        claude_backend=_claude(), codex_backend=_codex_discuss(), impl_codex_backend=_codex_impl(),
+        discussion_control=lambda s, r, **kw: ControlDecision("end"),
+        consensus_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+        human_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+    )
+    assert rc == 0
+
+
+def test_discuss_accepts_injected_view(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    view = FakeView()
+    rc = cli.main(
+        ["discuss", "build it", "--repo", str(repo), "--test-cmd", "true", "--max-rounds", "1"],
+        claude_backend=_claude(), codex_backend=_codex_discuss(), impl_codex_backend=_codex_impl(),
+        discussion_control=lambda s, r, **kw: ControlDecision("end"),
+        consensus_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+        human_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+        view=view,
+    )
+    assert rc == 0
+    assert any(e[0] == "plan" for e in view.events)
