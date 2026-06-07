@@ -2,7 +2,7 @@
 
 > 目的:首次用**真实** `claude` + `codex` CLI 端到端跑 `macr discuss`(含 Stage D 计划审查门),验证截至 Stage D 的 V1 CLI 在真机上的行为。此前所有 172 个测试都用 `FakeAgentBackend`,从未真机跑过。
 >
-> 结论:dogfood 抓到 **2 个真机必挂的 MACR bug**(已修复并提交),其中 1 个还被一条**断言错误契约的单元测试**掩护着;另发现 **1 个错误可观测性缺陷** + 几条次要项。Stage D 的优雅降级在真实 codex 失败下**两次**验证通过。codex 路径的完整闭环验证因**账号用量限制**(外部因素,约 20:00 恢复)未能在本轮跑满。
+> 结论:dogfood 抓到 **2 个真机必挂的 MACR bug**(已修复并提交),其中 1 个还被一条**断言错误契约的单元测试**掩护着;另发现 **1 个错误可观测性缺陷** + 几条次要项。Stage D 的优雅降级在真实 codex 失败下**两次**验证通过。codex 路径的完整闭环验证当晚因**账号用量限制**(外部因素)未能跑满,已于 **22:13 配额恢复后补跑通过**(见 §5):codex 审查真判 PASS、executor 真写文件、`check.py` 转绿、最终 approve。
 
 ---
 
@@ -112,9 +112,12 @@ run_id 按"日期+计数"确定性生成;`rm -rf` 输出目录不会清掉**源�
 - Stage D 审查门在 codex 失败下的优雅降级(BLOCKED → 仍达门),两次复现。
 - 两个修复(#1 flag、#6 stdin)经全套测试绿 + 真机不再报对应错误。
 
-**未决**
-- **codex executor 完整闭环**(真写文件 → `check.py` 转绿 → 最终 approve):因账号用量限制(约 20:00 恢复)本轮未跑满。待 codex 恢复后用 `/tmp/dogfood.sh` 重跑确认。
-- 发现 3(headless auto-gate)与发现 7(错误透传)留作后续。
+**已验证(补跑,2026-06-07 22:13 配额恢复后)**
+- **codex executor 完整闭环跑通**:用 `/tmp/dogfood.sh` 重跑,codex Stage D 审查不再 BLOCKED 而是真出审查意见判 **PASS**(2 条 non_blocking 建议);codex executor 在 `workspace-write` 沙箱下真写文件,worktree 里 `mymod.py` 出现 `def hello(): return 'hello'`;`python check.py` `passed=True`(`exit_code=0`,`log='OK'`);reviewer `approve`、evaluator `PASS`、最终门 `approve`。异构 claude(planner/共识)+ codex(审查/executor)协作端到端真机闭环验证完成。
+
+**已修复(原"未决")**
+- 发现 3(headless auto-gate):`e5b5c14`/`d6faa8b` 加入 `discuss --yes` 自动门(`auto_approve_gate`)。
+- 发现 7(错误透传):`4e9714f`/`ad7bffb` 加入 `stream_error`,非零退出优先从 `--json` 流提取真因。
 
 ## 6. 重跑方法(codex 配额恢复后)
 

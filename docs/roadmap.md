@@ -16,7 +16,7 @@
 #### V1 待办(真机 dogfood 发现,详见 [`dogfood-2026-06-07-v1-real-cli.md`](dogfood-2026-06-07-v1-real-cli.md))
 - [x] **错误透传**(发现 7):后端非零退出时 `AgentError` 优先从 `--json` 流提取真因(`stream_error`),stderr 兜底。
 - [x] **headless 自动门**(发现 3):`discuss --yes` 自动过共识门/最终门(`auto_approve_gate`),不读 stdin;非 TTY 无 `--yes` 时清晰报错。`--auto` 仅管讨论轮次。
-- [ ] **codex executor 完整闭环验证**:codex 配额恢复后用 `/tmp/dogfood.sh` 重跑,确认真写文件 → 测试转绿 → 最终 approve。
+- [x] **codex executor 完整闭环验证**(2026-06-07 22:13 配额恢复后重跑):codex Stage D 审查 PASS(非 BLOCKED)→ codex executor 真写 `mymod.py` 的 `hello()` → `python check.py` `passed=True` → 最终 approve。异构 claude+codex 协作端到端真机跑通。
 
 ### V2:Web 控制台
 - Next.js 前端;
