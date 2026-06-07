@@ -64,3 +64,18 @@ def test_artifact_endpoint_and_traversal(tmp_path):
     c = _client(tmp_path)
     assert c.get("/api/runs/R1/artifacts/final.md").text == "the final"
     assert c.get("/api/runs/R1/artifacts/..%2F..%2Fetc%2Fpasswd").status_code == 400
+
+
+def test_spa_index_served_when_dist_present(tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html>spa</html>", encoding="utf-8")
+    app = create_app(runs_dir=tmp_path, spa_dist=dist)
+    r = TestClient(app).get("/")
+    assert r.status_code == 200 and "spa" in r.text
+
+
+def test_no_spa_mount_when_dist_absent(tmp_path):
+    # create_app must not crash when no built SPA is present
+    app = create_app(runs_dir=tmp_path, spa_dist=tmp_path / "missing")
+    assert TestClient(app).get("/api/runs").status_code == 200

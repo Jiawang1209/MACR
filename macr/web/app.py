@@ -4,13 +4,14 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from macr.web.runs import (
     ArtifactError, RunCorrupt, RunNotFound, list_runs, load_run, read_artifact,
 )
 
 
-def create_app(runs_dir: Path) -> FastAPI:
+def create_app(runs_dir: Path, spa_dist: Path | None = None) -> FastAPI:
     runs_dir = Path(runs_dir)
     app = FastAPI(title="MACR Run Viewer")
 
@@ -35,5 +36,8 @@ def create_app(runs_dir: Path) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"run not found: {run_id}")
         except ArtifactError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+
+    if spa_dist is not None and Path(spa_dist).is_dir():
+        app.mount("/", StaticFiles(directory=str(spa_dist), html=True), name="spa")
 
     return app
