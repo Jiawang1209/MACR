@@ -95,6 +95,32 @@ def parse_codex_stream(lines: list[str]) -> tuple[str, list[SubagentRecord]]:
     return final_text, records
 
 
+def stream_error(lines: list[str], *, source: str) -> str | None:
+    """Extract a human-readable error message from a CLI's JSONL stdout, else None.
+
+    Surfaces the real failure (e.g. codex usage limit) instead of an incidental
+    stderr line when a CLI exits non-zero. Never raises: malformed lines are skipped.
+    """
+    for obj in _iter_json_lines(lines):
+        t = obj.get("type")
+        if source == "codex":
+            if t == "error" and obj.get("message"):
+                return str(obj["message"])
+            if t == "turn.failed":
+                msg = (obj.get("error") or {}).get("message")
+                if msg:
+                    return str(msg)
+        else:  # claude (best-effort across stream-json event shapes)
+            if t == "error" and obj.get("message"):
+                return str(obj["message"])
+            err = obj.get("error")
+            if isinstance(err, dict) and err.get("message"):
+                return str(err["message"])
+            if obj.get("is_error") and obj.get("result"):
+                return str(obj["result"])
+    return None
+
+
 class TraceSink:
     """Persists one role-invocation's raw event stream + parsed subagent summary."""
 
