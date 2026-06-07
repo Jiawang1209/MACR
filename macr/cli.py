@@ -50,6 +50,30 @@ def _print_artifacts(runs_dir: Path, state) -> None:
         print(f"产物 / artifacts: {runs_dir / run_id}/")
 
 
+def _validate_args(args) -> int | None:
+    """Shared input validation; print a clear error and return 2 on the first problem.
+
+    Checks apply by attribute presence, so one function serves all three subcommands.
+    """
+    if not args.task.strip():
+        print("error: task/topic 不能为空(请提供非空白的任务描述)", file=sys.stderr)
+        return 2
+    for name in ("max_revisions", "max_rounds", "max_plan_revisions"):
+        val = getattr(args, name, None)
+        if val is not None and val < 0:
+            print(f"error: --{name.replace('_', '-')} 不能为负数: {val}", file=sys.stderr)
+            return 2
+    repo = getattr(args, "repo", None)
+    if repo is not None and not Path(repo).is_dir():
+        print(f"error: --repo 路径不存在或不是目录: {repo}", file=sys.stderr)
+        return 2
+    test_cmd = getattr(args, "test_cmd", None)
+    if test_cmd is not None and not shlex.split(test_cmd):
+        print("error: --test-cmd 不能为空", file=sys.stderr)
+        return 2
+    return None
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     from macr import __version__
 
@@ -237,6 +261,9 @@ def main(argv: list[str] | None = None, *, llm=None,
          claude_backend=None, codex_backend=None, impl_codex_backend=None,
          human_gate=None, discussion_control=None, consensus_gate=None, view=None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
+    invalid = _validate_args(args)
+    if invalid is not None:
+        return invalid
     if args.command == "collab":
         gate = _resolve_gate(args, human_gate, collab_human_gate)
         guard = _non_tty_gate_guard(gate)

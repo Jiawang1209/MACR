@@ -65,6 +65,30 @@ def test_collab_missing_binary_errors(tmp_path, monkeypatch):
     assert rc == 2
 
 
+def test_collab_missing_repo_errors(tmp_path, monkeypatch, capsys):
+    """A --repo that is not an existing directory is rejected with a clear error."""
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(
+        ["collab", "do it", "--repo", str(tmp_path / "nope"), "--test-cmd", "true"],
+        claude_backend=_claude(), codex_backend=_codex(),
+    )
+    assert rc == 2
+    assert "repo" in capsys.readouterr().err.lower()
+
+
+def test_collab_empty_test_cmd_errors(tmp_path, monkeypatch, capsys):
+    """An empty --test-cmd is rejected with a clear error."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(
+        ["collab", "do it", "--repo", str(repo), "--test-cmd", "   "],
+        claude_backend=_claude(), codex_backend=_codex(),
+    )
+    assert rc == 2
+    assert "test-cmd" in capsys.readouterr().err
+
+
 def test_collab_prints_artifact_path(tmp_path, monkeypatch, capsys):
     """At the end of collab, the .macr/runs/<id> artifact dir is printed."""
     repo = tmp_path / "repo"

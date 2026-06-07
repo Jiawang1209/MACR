@@ -32,8 +32,8 @@
   "hotPaths": [
     {
       "path": "macr/cli.py",
-      "accessCount": 45,
-      "lastAccessed": 1780843592820,
+      "accessCount": 47,
+      "lastAccessed": 1780843699270,
       "type": "file"
     },
     {
@@ -61,6 +61,12 @@
       "type": "file"
     },
     {
+      "path": "tests/test_cli.py",
+      "accessCount": 11,
+      "lastAccessed": 1780843654606,
+      "type": "file"
+    },
+    {
       "path": "docs/roadmap.md",
       "accessCount": 10,
       "lastAccessed": 1780841813662,
@@ -70,12 +76,6 @@
       "path": "macr/runlog.py",
       "accessCount": 10,
       "lastAccessed": 1780842320616,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_cli.py",
-      "accessCount": 10,
-      "lastAccessed": 1780843559736,
       "type": "file"
     },
     {

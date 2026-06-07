@@ -56,6 +56,19 @@ def test_discuss_approve_returns_zero(tmp_path, monkeypatch):
     assert (tmp_path / ".macr" / "runs").exists()
 
 
+def test_discuss_negative_max_rounds_errors(tmp_path, monkeypatch, capsys):
+    """Negative --max-rounds is rejected with a clear error before any agent runs."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(
+        ["discuss", "build it", "--repo", str(repo), "--test-cmd", "true", "--max-rounds=-1"],
+        claude_backend=_claude(), codex_backend=_codex_discuss(), impl_codex_backend=_codex_impl(),
+    )
+    assert rc == 2
+    assert "max-rounds" in capsys.readouterr().err
+
+
 def test_discuss_prints_artifact_path(tmp_path, monkeypatch, capsys):
     """At the end of discuss, the .macr/runs/<id> artifact dir is printed."""
     repo = tmp_path / "repo"

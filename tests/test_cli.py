@@ -34,6 +34,22 @@ def test_run_help_has_flag_descriptions(capsys):
     assert "model" in out or "模型" in out  # --model help
 
 
+def test_run_blank_task_errors(tmp_path, monkeypatch, capsys):
+    """A blank task is rejected with a clear error before any agent runs."""
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(["run", "   "], llm=_scripted_llm())
+    assert rc == 2
+    assert "task" in capsys.readouterr().err.lower()
+
+
+def test_run_negative_max_revisions_errors(tmp_path, monkeypatch, capsys):
+    """Negative --max-revisions is rejected with a clear error."""
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(["run", "task", "--max-revisions=-1"], llm=_scripted_llm())
+    assert rc == 2
+    assert "max-revisions" in capsys.readouterr().err
+
+
 def _scripted_llm():
     return FakeLLM([
         {"summary": "p", "steps": ["s"], "tools_needed": [], "risks": []},
