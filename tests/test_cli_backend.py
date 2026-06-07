@@ -5,43 +5,71 @@ import pytest
 from macr.agent import AgentError
 from macr.agents.base import ProcResult, FakeProcessRunner
 from macr.agents.cli_backend import ClaudeCliBackend, CodexCliBackend
+from macr.agents.trace import TraceSink
 from macr.collab_roles import EXECUTOR_C, PLANNER_C
 from macr.schemas import SharedState
 
 
-def _plan_dict():
+def _claude_stream(inner: dict, *, with_sub: bool = False) -> str:
+    lines = []
+    if with_sub:
+        lines.append(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "toolu_s1", "name": "Agent",
+             "input": {"subagent_type": "Explore"}}]}, "parent_tool_use_id": None}))
+        lines.append(json.dumps({"type": "stream_event", "event": {}, "parent_tool_use_id": "toolu_s1"}))
+    lines.append(json.dumps({"type": "result", "result": json.dumps(inner), "session_id": "s1"}))
+    return "\n".join(lines)
+
+
+def _codex_stream(inner: dict, *, with_sub: bool = False) -> str:
+    lines = [json.dumps({"type": "thread.started", "thread_id": "root"})]
+    if with_sub:
+        lines.append(json.dumps({"type": "thread.started", "thread_id": "sub-1"}))
+    lines.append(json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(inner)}}))
+    lines.append(json.dumps({"type": "turn.completed"}))
+    return "\n".join(lines)
+
+
+def _plan():
     return {"summary": "p", "steps": ["a"], "tools_needed": [], "risks": []}
 
 
-def _claude_envelope(inner: dict) -> str:
-    return json.dumps({"type": "result", "result": json.dumps(inner)})
-
-
-def test_claude_backend_parses_and_builds_message():
-    runner = FakeProcessRunner([ProcResult(0, _claude_envelope(_plan_dict()), "")])
+def test_claude_streaming_parses_and_argv_has_agent_and_cwd():
+    runner = FakeProcessRunner([ProcResult(0, _claude_stream(_plan()), "")])
     backend = ClaudeCliBackend(runner=runner, model="claude-x")
-    state = SharedState(run_id="R1", user_query="task")
+    state = SharedState(run_id="R1", user_query="task", worktree_path="/tmp/wt")
     msg = backend.run_role(PLANNER_C, state, run_id="R1", task_id="R1", timestamp="t")
     assert msg.content["steps"] == ["a"]
+    call = runner.calls[0]
+    argv = call["argv"]
+    assert argv[0] == "claude" and "--output-format" in argv and "stream-json" in argv
+    assert "--allowedTools" in argv
+    tools = argv[argv.index("--allowedTools") + 1]
+    assert "Agent" in tools
+    assert call["cwd"] == "/tmp/wt"
+
+
+def test_claude_no_subagents_drops_agent_tool():
+    runner = FakeProcessRunner([ProcResult(0, _claude_stream(_plan()), "")])
+    backend = ClaudeCliBackend(runner=runner, enable_subagents=False)
+    state = SharedState(run_id="R1", user_query="task")
+    backend.run_role(PLANNER_C, state, run_id="R1", task_id="R1", timestamp="t")
     argv = runner.calls[0]["argv"]
-    assert argv[0] == "claude" and "-p" in argv
-    assert "--output-format" in argv and "json" in argv
-    assert "--model" in argv and "claude-x" in argv
+    tools = argv[argv.index("--allowedTools") + 1]
+    assert "Agent" not in tools
 
 
-def test_claude_backend_retries_on_invalid():
-    runner = FakeProcessRunner([
-        ProcResult(0, _claude_envelope({"summary": "bad"}), ""),
-        ProcResult(0, _claude_envelope(_plan_dict()), ""),
-    ])
+def test_claude_captures_trace(tmp_path):
+    runner = FakeProcessRunner([ProcResult(0, _claude_stream(_plan(), with_sub=True), "")])
     backend = ClaudeCliBackend(runner=runner)
+    sink = TraceSink(tmp_path, "planner.v1")
     state = SharedState(run_id="R1", user_query="task")
-    msg = backend.run_role(PLANNER_C, state, run_id="R1", task_id="R1", timestamp="t")
-    assert msg.content["steps"] == ["a"]
-    assert len(runner.calls) == 2
+    backend.run_role(PLANNER_C, state, run_id="R1", task_id="R1", timestamp="t", trace=sink)
+    assert (tmp_path / "planner.v1.events.jsonl").exists()
+    assert len(sink.records) == 1 and sink.records[0].agent_type == "Explore"
 
 
-def test_claude_backend_nonzero_exit_raises():
+def test_claude_nonzero_exit_raises():
     runner = FakeProcessRunner([ProcResult(1, "", "boom"), ProcResult(1, "", "boom")])
     backend = ClaudeCliBackend(runner=runner)
     state = SharedState(run_id="R1", user_query="task")
@@ -49,17 +77,44 @@ def test_claude_backend_nonzero_exit_raises():
         backend.run_role(PLANNER_C, state, run_id="R1", task_id="R1", timestamp="t")
 
 
-def test_codex_backend_parses_stdout_and_passes_worktree():
-    exec_json = {"artifact": "edited main.py", "notes": "", "evidence": ["main.py"]}
-    stdout = "working...\nDone. " + json.dumps(exec_json)
-    runner = FakeProcessRunner([ProcResult(0, stdout, "")])
+def test_claude_empty_result_retries_then_raises():
+    empty = json.dumps({"type": "turn.completed"})
+    runner = FakeProcessRunner([ProcResult(0, empty, ""), ProcResult(0, empty, "")])
+    backend = ClaudeCliBackend(runner=runner)
+    state = SharedState(run_id="R1", user_query="task")
+    with pytest.raises(AgentError):
+        backend.run_role(PLANNER_C, state, run_id="R1", task_id="R1", timestamp="t")
+
+
+def test_codex_streaming_parses_and_argv():
+    inner = {"artifact": "edited", "notes": "", "evidence": []}
+    runner = FakeProcessRunner([ProcResult(0, _codex_stream(inner), "")])
     backend = CodexCliBackend(runner=runner, model="gpt-x")
     state = SharedState(run_id="R1", user_query="task", worktree_path="/tmp/wt")
     msg = backend.run_role(EXECUTOR_C, state, run_id="R1", task_id="R1", timestamp="t")
-    assert msg.content["artifact"] == "edited main.py"
+    assert msg.content["artifact"] == "edited"
     argv = runner.calls[0]["argv"]
     assert argv[0] == "codex" and argv[1] == "exec"
-    assert "--cd" in argv and "/tmp/wt" in argv
-    assert "--sandbox" in argv and "workspace-write" in argv
-    assert "--ask-for-approval" in argv and "never" in argv
-    assert "--model" in argv and "gpt-x" in argv
+    assert "--json" in argv and "--cd" in argv and "/tmp/wt" in argv
+    assert "--sandbox" in argv and "--ask-for-approval" in argv
+
+
+def test_codex_no_subagents_disables_multi_agent():
+    inner = {"artifact": "x", "notes": "", "evidence": []}
+    runner = FakeProcessRunner([ProcResult(0, _codex_stream(inner), "")])
+    backend = CodexCliBackend(runner=runner, enable_subagents=False)
+    state = SharedState(run_id="R1", user_query="task", worktree_path="/tmp/wt")
+    backend.run_role(EXECUTOR_C, state, run_id="R1", task_id="R1", timestamp="t")
+    argv = runner.calls[0]["argv"]
+    assert "features.multi_agent=false" in argv
+
+
+def test_codex_captures_trace(tmp_path):
+    inner = {"artifact": "x", "notes": "", "evidence": []}
+    runner = FakeProcessRunner([ProcResult(0, _codex_stream(inner, with_sub=True), "")])
+    backend = CodexCliBackend(runner=runner)
+    sink = TraceSink(tmp_path, "executor.v1")
+    state = SharedState(run_id="R1", user_query="task", worktree_path="/tmp/wt")
+    backend.run_role(EXECUTOR_C, state, run_id="R1", task_id="R1", timestamp="t", trace=sink)
+    assert (tmp_path / "executor.v1.subagents.json").exists()
+    assert len(sink.records) == 1 and sink.records[0].ref == "sub-1"

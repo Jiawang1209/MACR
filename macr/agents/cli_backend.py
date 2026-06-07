@@ -10,6 +10,7 @@ from macr.agents.base import (
     message_from_content,
     validate_with_retry,
 )
+from macr.agents.trace import TraceSink, parse_claude_stream, parse_codex_stream
 from macr.roles import RoleSpec
 from macr.schemas import Message, SharedState
 
@@ -27,74 +28,82 @@ def _base_prompt(role: RoleSpec, state: SharedState) -> str:
 
 
 class ClaudeCliBackend:
-    """Drives the `claude` CLI in headless print mode."""
+    """Drives the `claude` CLI headless, with streaming output and native subagents."""
 
     name = "claude_cli"
 
     def __init__(self, *, model: str | None = None, runner: ProcessRunner | None = None,
-                 claude_bin: str = "claude", timeout: int = 1800):
+                 claude_bin: str = "claude", timeout: int = 1800, enable_subagents: bool = True):
         self.model = model
         self.runner = runner or SubprocessRunner()
         self.claude_bin = claude_bin
         self.timeout = timeout
+        self.enable_subagents = enable_subagents
 
-    def run_role(self, role, state, *, run_id, task_id, timestamp=None) -> Message:
+    def run_role(self, role, state, *, run_id, task_id, timestamp=None, trace: TraceSink | None = None) -> Message:
         prompt = _base_prompt(role, state)
+        cwd = state.worktree_path
+        captured: dict = {"lines": [], "subs": []}
 
         def call_fn(extra: str) -> dict:
-            argv = [self.claude_bin, "-p", prompt + extra, "--output-format", "json"]
+            tools = "Read,Grep,Glob,Agent" if self.enable_subagents else "Read,Grep,Glob"
+            argv = [self.claude_bin, "-p", prompt + extra,
+                    "--output-format", "stream-json", "--verbose",
+                    "--include-partial-messages", "--allowedTools", tools]
             if self.model:
                 argv += ["--model", self.model]
-            res = self.runner.run(argv, timeout=self.timeout)
+            res = self.runner.run(argv, cwd=cwd, timeout=self.timeout)
             if res.returncode != 0:
                 raise AgentError(f"claude CLI exited {res.returncode}: {res.stderr.strip()}")
-            return self._parse(res.stdout)
+            lines = res.stdout.splitlines()
+            final_text, subs = parse_claude_stream(lines)
+            captured["lines"], captured["subs"] = lines, subs
+            return extract_json_object(final_text)
 
         content = validate_with_retry(role, call_fn)
+        if trace is not None:
+            trace.capture(captured["lines"], captured["subs"])
         return message_from_content(role, content, run_id=run_id, task_id=task_id, timestamp=timestamp)
-
-    @staticmethod
-    def _parse(stdout: str) -> dict:
-        try:
-            envelope = json.loads(stdout)
-            inner = envelope.get("result", stdout) if isinstance(envelope, dict) else stdout
-        except json.JSONDecodeError:
-            inner = stdout
-        return extract_json_object(inner)
 
 
 class CodexCliBackend:
-    """Drives the `codex` CLI in non-interactive exec mode inside a worktree."""
+    """Drives the `codex` CLI in non-interactive exec mode with JSON streaming + subagents."""
 
     name = "codex_cli"
 
     def __init__(self, *, model: str | None = None, runner: ProcessRunner | None = None,
                  codex_bin: str = "codex", sandbox: str = "workspace-write",
-                 approval: str = "never", timeout: int = 1800):
+                 approval: str = "never", timeout: int = 1800, enable_subagents: bool = True):
         self.model = model
         self.runner = runner or SubprocessRunner()
         self.codex_bin = codex_bin
         self.sandbox = sandbox
         self.approval = approval
         self.timeout = timeout
+        self.enable_subagents = enable_subagents
 
-    def run_role(self, role, state, *, run_id, task_id, timestamp=None) -> Message:
+    def run_role(self, role, state, *, run_id, task_id, timestamp=None, trace: TraceSink | None = None) -> Message:
         prompt = _base_prompt(role, state)
         cwd = state.worktree_path or "."
+        captured: dict = {"lines": [], "subs": []}
 
         def call_fn(extra: str) -> dict:
-            argv = [
-                self.codex_bin, "exec", prompt + extra,
-                "--cd", cwd,
-                "--sandbox", self.sandbox,
-                "--ask-for-approval", self.approval,
-            ]
+            argv = [self.codex_bin, "exec", prompt + extra,
+                    "--cd", cwd, "--sandbox", self.sandbox,
+                    "--ask-for-approval", self.approval, "--json"]
+            if not self.enable_subagents:
+                argv += ["-c", "features.multi_agent=false"]
             if self.model:
                 argv += ["--model", self.model]
             res = self.runner.run(argv, timeout=self.timeout)
             if res.returncode != 0:
                 raise AgentError(f"codex CLI exited {res.returncode}: {res.stderr.strip()}")
-            return extract_json_object(res.stdout)
+            lines = res.stdout.splitlines()
+            final_text, subs = parse_codex_stream(lines)
+            captured["lines"], captured["subs"] = lines, subs
+            return extract_json_object(final_text)
 
         content = validate_with_retry(role, call_fn)
+        if trace is not None:
+            trace.capture(captured["lines"], captured["subs"])
         return message_from_content(role, content, run_id=run_id, task_id=task_id, timestamp=timestamp)
