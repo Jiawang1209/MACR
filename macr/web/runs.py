@@ -146,4 +146,45 @@ def load_run(runs_dir: Path, run_id: str) -> RunDetail:
 
 
 def _stages_discuss(state: dict) -> list[Stage]:
-    return []  # replaced in a later task
+    stages: list[Stage] = []
+    # 1. discussion: plans / turns / human interjections (injected "review" entries are
+    #    skipped here — they surface as plan_review stages below).
+    for e in state.get("discussion", []):
+        kind = e.get("kind")
+        agent = e.get("agent")
+        content = e.get("content", {}) if isinstance(e.get("content"), dict) else {}
+        if kind == "plan":
+            stages.append(Stage(kind="plan", label=f"Plan ({agent})", agent=agent,
+                                body={"summary": content.get("summary", ""),
+                                      "steps": content.get("steps", [])}))
+        elif kind == "turn":
+            stages.append(Stage(kind="turn", label=f"Turn r{e.get('round')} ({agent})", agent=agent,
+                                body={"response": content.get("response", ""),
+                                      "concerns": content.get("concerns", []),
+                                      "revised_steps": content.get("revised_steps", [])}))
+        elif kind == "interjection":
+            stages.append(Stage(kind="turn", label=f"Human interjection r{e.get('round')}",
+                                agent="human", body={"text": e.get("content", "")}))
+    # 2. consensus
+    c = state.get("consensus")
+    if c:
+        stages.append(Stage(kind="consensus", label="Consensus",
+                            body={"summary": c.get("summary", ""), "steps": c.get("steps", []),
+                                  "rationale": c.get("rationale", "")}))
+    # 3. plan-review loop (codex reviews the consensus plan)
+    plan_reviews = [d for d in state.get("decisions", []) if d.get("stage") == "plan_review"]
+    reviews = state.get("reviews", [])
+    for d in plan_reviews:
+        att = d.get("attempt", 0)
+        rv = reviews[att] if att < len(reviews) else {}
+        stages.append(Stage(kind="plan_review", label=f"Plan Review #{att}", agent="codex",
+                            status=d.get("decision"),
+                            body={"summary": rv.get("summary", ""), "findings": rv.get("findings", [])}))
+    # 4. implementation loop — impl reviewers start after the plan reviewers in agent_outputs.reviewer
+    stages += _impl_loop_stages(state, with_tests=True, exec_agent="codex",
+                                review_agent="claude", reviewer_offset=len(plan_reviews))
+    # 5. final human gate
+    g = _gate_stage(state)
+    if g:
+        stages.append(g)
+    return stages

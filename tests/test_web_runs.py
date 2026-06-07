@@ -90,3 +90,51 @@ def test_load_run_corrupt_state_raises(tmp_path):
     (d / "state.json").write_text("{ not json", encoding="utf-8")
     with pytest.raises(RunCorrupt):
         load_run(tmp_path, "R1")
+
+
+def _discuss_state():
+    return {
+        "run_id": "R1", "user_query": "build add()", "topic": "build add()",
+        "target_repo": "/tmp/repo", "worktree_path": "/tmp/wt",
+        "agent_outputs": {
+            "planner": [], "executor": [{"artifact": "def add", "notes": ""}],
+            "reviewer": [
+                {"summary": "plan-rv", "findings": [], "decision": "approve"},  # plan review
+                {"summary": "impl-rv", "findings": [], "decision": "approve"},  # impl review
+            ],
+            "evaluator": [],
+        },
+        "reviews": [
+            {"summary": "plan-rv", "findings": [], "decision": "approve"},
+            {"summary": "impl-rv", "findings": [], "decision": "approve"},
+        ],
+        "decisions": [
+            {"stage": "plan_review", "attempt": 0, "decision": "PASS"},
+            {"attempt": 1, "decision": "PASS", "test_passed": True},
+        ],
+        "test_results": [{"command": "python check.py", "passed": True, "exit_code": 0, "log": "OK\n"}],
+        "diffs": ["diff ..."],
+        "human_feedback": {"decision": "approve", "feedback": "", "timestamp": "t"},
+        "discussion": [
+            {"round": 0, "agent": "claude", "kind": "plan", "content": {"summary": "c-plan", "steps": ["s"]}},
+            {"round": 0, "agent": "codex", "kind": "plan", "content": {"summary": "x-plan", "steps": ["s"]}},
+            {"round": 1, "agent": "claude", "kind": "turn",
+             "content": {"response": "r", "concerns": [], "revised_steps": []}},
+        ],
+        "consensus": {"summary": "agreed", "steps": ["do-1"], "rationale": "r", "open_questions": []},
+    }
+
+
+def test_load_run_discuss_stage_sequence(tmp_path):
+    _write_run(tmp_path, "R1", _discuss_state())
+    detail = load_run(tmp_path, "R1")
+    assert detail.command_type == "discuss"
+    kinds = [s.kind for s in detail.stages]
+    # two plans + one turn + consensus + one plan_review + impl loop (exec/tests/reviewer/eval) + gate
+    assert kinds == ["plan", "plan", "turn", "consensus", "plan_review",
+                     "executor", "tests", "reviewer", "evaluator", "gate"]
+    # the impl reviewer must be the SECOND reviewer entry (plan review consumed the first)
+    impl_review = next(s for s in detail.stages if s.kind == "reviewer")
+    assert impl_review.body["summary"] == "impl-rv"
+    pr = next(s for s in detail.stages if s.kind == "plan_review")
+    assert pr.status == "PASS" and pr.body["summary"] == "plan-rv"
