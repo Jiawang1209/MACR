@@ -53,3 +53,48 @@ def test_views_are_context_managers():
     for v in (ConsoleView(out=lambda *_: None), SilentView(), FakeView()):
         with v as entered:
             assert entered is v
+
+
+def test_two_pane_routes_to_buffers():
+    from macr.discussion_view import TwoPaneView
+    v = TwoPaneView(enabled=False)  # no Live; buffers only
+    v.plan("claude", {"summary": "csum", "steps": ["cs1"]})
+    v.plan("codex", {"summary": "xsum", "steps": ["xs1"]})
+    v.turn("claude", 1, {"response": "cresp", "concerns": [], "revised_steps": []})
+    v.interjection(1, "human-says")
+    v.status("tests passed=True")
+    assert any("csum" in l for l in v.claude_lines)
+    assert any("xsum" in l for l in v.codex_lines)
+    assert any("cresp" in l for l in v.claude_lines)
+    assert any("human-says" in l for l in v.status_lines)
+    assert any("passed=True" in l for l in v.status_lines)
+
+
+def test_two_pane_render_contains_text():
+    from rich.console import Console
+    from macr.discussion_view import TwoPaneView
+    v = TwoPaneView(enabled=False)
+    v.plan("claude", {"summary": "HELLO-CLAUDE", "steps": []})
+    v.plan("codex", {"summary": "HELLO-CODEX", "steps": []})
+    rec = Console(record=True, width=120)
+    rec.print(v._render())
+    text = rec.export_text()
+    assert "Claude" in text and "Codex" in text
+    assert "HELLO-CLAUDE" in text and "HELLO-CODEX" in text
+
+
+def test_two_pane_non_tty_does_not_start_live():
+    from macr.discussion_view import TwoPaneView
+    v = TwoPaneView(enabled=False)
+    with v:
+        v.note("x")  # must not raise, no Live
+    assert v._live is None
+
+
+def test_two_pane_control_delegates(monkeypatch):
+    from macr.discussion_view import TwoPaneView
+    from macr.schemas import SharedState
+    v = TwoPaneView(enabled=False)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "c")
+    d = v.control(SharedState(run_id="R1", user_query="q", topic="z"), 1)
+    assert d.action == "continue"
