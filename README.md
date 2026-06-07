@@ -174,3 +174,7 @@ export ANTHROPIC_API_KEY=sk-...
 ```
 
 流程:Claude Planner → Codex 在 `.macr/worktrees/<run_id>/` 改代码 → 框架跑 `--test-cmd` → Claude 审 diff+测试 → 规则判定 → 返工(≤ `--max-revisions`)→ Human Gate(approve/reject/edit)。产物在 `.macr/runs/<run_id>/`(含 `diff.vN.patch`、`test.vN.json`、`final.md`)。approve 后 worktree 保留供你手动 merge。
+
+### 嵌套 subagent (Stage B) / Nested subagents
+
+`macr collab` 默认允许 Claude(`Agent` 工具)与 Codex(`multi_agent`)使用各自的**原生 subagent**;用 `--no-subagents` 关闭。每个角色调用的原始事件流与 subagent 摘要落在 `.macr/runs/<run_id>/subagents/`。解析器为防御式,真实事件 schema 校准见 `docs/superpowers/STAGE_B_CALIBRATION.md`。
