@@ -18,6 +18,15 @@
 - [x] **headless 自动门**(发现 3):`discuss --yes` 自动过共识门/最终门(`auto_approve_gate`),不读 stdin;非 TTY 无 `--yes` 时清晰报错。`--auto` 仅管讨论轮次。
 - [x] **codex executor 完整闭环验证**(2026-06-07 22:13 配额恢复后重跑):codex Stage D 审查 PASS(非 BLOCKED)→ codex executor 真写 `mymod.py` 的 `hello()` → `python check.py` `passed=True` → 最终 approve。异构 claude+codex 协作端到端真机跑通。
 
+#### V1 一致性打磨(2026-06-07,设计见 [`specs/2026-06-07-v1-consistency-polish-design.md`](superpowers/specs/2026-06-07-v1-consistency-polish-design.md))
+把 `discuss` 的硬化沉到共享层,三命令(`run`/`collab`/`discuss`)行为对齐。全程 TDD,204 测试绿。
+- [x] **共享门层**:抽 `_resolve_gate` + `_non_tty_gate_guard`;`collab`/`run` 获得 `--yes` 自动门与非 TTY 清晰报错(原仅 `discuss` 有,其余裸 EOF)。
+- [x] **输入校验**:空白 `task`、非目录 `--repo`、空 `--test-cmd`、负 `--max-*` 统一 `error:` + 退 2。
+- [x] **可观测性**:三命令起手 announce `run_id` + 产物目录(可边跑边 tail),收尾再次给出 `.macr/runs/<id>/`。
+- [x] **CLI 一致性**:`--version`;`discuss`/`run`/`collab` 全 flag 帮助文字对齐;`run` runs_dir 改 `.resolve()`。
+- [x] **重构**:`run_discuss` 抽出 `_plan_review_loop`(对称 `_implementation_loop`);`discussion_view.py` 评估为内聚的策略族,不拆。
+- [x] **契约测试**:pin claude/codex argv(防发现 5 类的外部 CLI 契约漂移)。
+
 ### V2:Web 控制台
 - Next.js 前端;
 - 显示任务流程与每个 Agent 输出;
