@@ -51,6 +51,69 @@ def _build_final(state: SharedState) -> str:
     return "\n".join(parts) + "\n"
 
 
+def _implementation_loop(
+    state: SharedState,
+    *,
+    run_path: Path,
+    log: RunLog,
+    worktree: Worktree,
+    claude_backend: AgentBackend,
+    codex_backend: AgentBackend,
+    test_cmd: list[str],
+    max_revisions: int,
+    timeout: int,
+    printer: Callable[..., None],
+) -> None:
+    """Shared executor→diff→test→review→eval revision loop (Stage A + Stage C)."""
+    try:
+        total_attempts = max_revisions + 1
+        for attempt in range(1, total_attempts + 1):
+            exec_sink = TraceSink(run_path / "subagents", f"executor.v{attempt}")
+            exec_msg = codex_backend.run_role(
+                EXECUTOR_C, state, run_id=state.run_id, task_id=state.run_id, trace=exec_sink)
+            state.agent_outputs["executor"].append(exec_msg.content)
+            log.write_executor(exec_msg.content, attempt)
+            _record_subagents(state, exec_sink, "executor", attempt)
+
+            diff = worktree.diff()
+            state.diffs.append(diff)
+            log.write_diff(diff, attempt)
+
+            tr: TestResult = run_tests(worktree.path, test_cmd, timeout)
+            state.test_results.append(tr.model_dump())
+            log.write_test(tr.model_dump(), tr.log, attempt)
+            printer(f"[tests #{attempt}] passed={tr.passed}")
+
+            review_sink = TraceSink(run_path / "subagents", f"reviewer.v{attempt}")
+            review_msg = claude_backend.run_role(
+                REVIEWER_C, state, run_id=state.run_id, task_id=state.run_id, trace=review_sink)
+            state.agent_outputs["reviewer"].append(review_msg.content)
+            state.reviews.append(review_msg.content)
+            log.write_reviewer(review_msg.content)
+            _record_subagents(state, review_sink, "reviewer", attempt)
+            printer(f"[reviewer] {review_msg.content.get('decision', '')}")
+
+            decision = evaluate_collab(test_result=tr, reviewer=review_msg.content, agent_failed=False)
+            state.decisions.append({"attempt": attempt, "decision": decision.value, "test_passed": tr.passed})
+            log.write_evaluator({"attempt": attempt, "decision": decision.value, "test_passed": tr.passed})
+            printer(f"[evaluator] {decision.value}")
+
+            if decision in (Decision.PASS, Decision.BLOCKED):
+                break
+            if attempt >= total_attempts:
+                break
+    except AgentError as exc:
+        record = {
+            "attempt": len(state.decisions) + 1,
+            "decision": Decision.BLOCKED.value,
+            "test_passed": False,
+            "error": str(exc),
+        }
+        state.decisions.append(record)
+        log.write_evaluator(record)
+        printer(f"[blocked] {exc}")
+
+
 def run_collab(
     task: str,
     *,
@@ -85,45 +148,7 @@ def run_collab(
             log.write_planner(planner_msg.content)
             _record_subagents(state, planner_sink, "planner", 1)
             printer(f"[planner] {planner_msg.content.get('summary', '')}")
-
-            total_attempts = max_revisions + 1
-            for attempt in range(1, total_attempts + 1):
-                exec_sink = TraceSink(run_path / "subagents", f"executor.v{attempt}")
-                exec_msg = codex_backend.run_role(
-                    EXECUTOR_C, state, run_id=run_id, task_id=run_id, trace=exec_sink)
-                state.agent_outputs["executor"].append(exec_msg.content)
-                log.write_executor(exec_msg.content, attempt)
-                _record_subagents(state, exec_sink, "executor", attempt)
-
-                diff = worktree.diff()
-                state.diffs.append(diff)
-                log.write_diff(diff, attempt)
-
-                tr: TestResult = run_tests(worktree.path, test_cmd, timeout)
-                state.test_results.append(tr.model_dump())
-                log.write_test(tr.model_dump(), tr.log, attempt)
-                printer(f"[tests #{attempt}] passed={tr.passed}")
-
-                review_sink = TraceSink(run_path / "subagents", f"reviewer.v{attempt}")
-                review_msg = claude_backend.run_role(
-                    REVIEWER_C, state, run_id=run_id, task_id=run_id, trace=review_sink)
-                state.agent_outputs["reviewer"].append(review_msg.content)
-                state.reviews.append(review_msg.content)
-                log.write_reviewer(review_msg.content)
-                _record_subagents(state, review_sink, "reviewer", attempt)
-                printer(f"[reviewer] {review_msg.content.get('decision', '')}")
-
-                decision = evaluate_collab(test_result=tr, reviewer=review_msg.content, agent_failed=False)
-                state.decisions.append({"attempt": attempt, "decision": decision.value, "test_passed": tr.passed})
-                log.write_evaluator({"attempt": attempt, "decision": decision.value, "test_passed": tr.passed})
-                printer(f"[evaluator] {decision.value}")
-
-                if decision in (Decision.PASS, Decision.BLOCKED):
-                    break
-                if attempt >= total_attempts:
-                    break
         except AgentError as exc:
-            # spec §6: a role failing schema validation twice -> BLOCKED -> Human Gate.
             record = {
                 "attempt": len(state.decisions) + 1,
                 "decision": Decision.BLOCKED.value,
@@ -133,6 +158,11 @@ def run_collab(
             state.decisions.append(record)
             log.write_evaluator(record)
             printer(f"[blocked] {exc}")
+        else:
+            _implementation_loop(
+                state, run_path=run_path, log=log, worktree=worktree,
+                claude_backend=claude_backend, codex_backend=codex_backend,
+                test_cmd=test_cmd, max_revisions=max_revisions, timeout=timeout, printer=printer)
 
         feedback = human_gate(state, printer=printer)
         state.human_feedback = feedback
