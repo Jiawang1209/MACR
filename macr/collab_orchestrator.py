@@ -100,9 +100,15 @@ def run_collab(
                 if attempt >= total_attempts:
                     break
         except AgentError as exc:
-            state.decisions.append(
-                {"attempt": len(state.decisions) + 1, "decision": Decision.BLOCKED.value, "error": str(exc)}
-            )
+            # spec §6: a role failing schema validation twice -> BLOCKED -> Human Gate.
+            record = {
+                "attempt": len(state.decisions) + 1,
+                "decision": Decision.BLOCKED.value,
+                "test_passed": False,
+                "error": str(exc),
+            }
+            state.decisions.append(record)
+            log.write_evaluator(record)
             printer(f"[blocked] {exc}")
 
         feedback = human_gate(state, printer=printer)

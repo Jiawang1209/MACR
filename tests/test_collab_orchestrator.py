@@ -118,3 +118,29 @@ def test_reject_cleans_up_worktree(tmp_path):
     )
     assert state.human_feedback.decision == "reject"
     assert not (tmp_path / "wts" / "R20260607_001").exists()
+
+
+def test_agent_error_routes_to_blocked_gate_and_persists(tmp_path):
+    from macr.agent import AgentError
+    from macr.schemas import Message, MessageType
+
+    class _RaisingBackend:
+        name = "raising"
+
+        def run_role(self, role, state, *, run_id, task_id, timestamp=None):
+            raise AgentError("planner failed twice")
+
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    codex = FakeAgentBackend({"executor": [_exec(1)]}, on_run=_editor)
+    state = run_collab(
+        "task", repo=repo, test_cmd=["true"],
+        claude_backend=_RaisingBackend(), codex_backend=codex,
+        runs_dir=tmp_path / "runs", worktrees_dir=tmp_path / "wts",
+        max_revisions=2, human_gate=_approve, printer=lambda *_: None, today="20260607",
+    )
+    assert state.decisions[-1]["decision"] == "BLOCKED"
+    assert state.human_feedback is not None  # gate still reached
+    run_path = tmp_path / "runs" / "R20260607_001"
+    assert (run_path / "evaluator.output.json").exists()  # BLOCKED decision landed on disk
+    assert (run_path / "state.json").exists()

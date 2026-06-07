@@ -31,10 +31,13 @@ class SubprocessRunner:
     """Real process runner wrapping subprocess.run."""
 
     def run(self, argv, *, cwd=None, input_text=None, timeout=None) -> ProcResult:
-        proc = subprocess.run(
-            argv, cwd=cwd, input=input_text,
-            capture_output=True, text=True, timeout=timeout,
-        )
+        try:
+            proc = subprocess.run(
+                argv, cwd=cwd, input=input_text,
+                capture_output=True, text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AgentError(f"process timed out after {timeout}s: {' '.join(map(str, argv[:2]))}") from exc
         return ProcResult(proc.returncode, proc.stdout, proc.stderr)
 
 
@@ -47,16 +50,21 @@ class AgentBackend(Protocol):
 
 
 def extract_json_object(text: str) -> dict:
-    """Extract the first JSON object from text, tolerating code fences and prose."""
+    """Extract the first JSON object from text, tolerating code fences, prose, and trailing data."""
     text = text.strip()
     fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     if fence:
-        text = fence.group(1)
+        text = fence.group(1).strip()
     start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end < start:
+    if start == -1:
         raise ValueError(f"no JSON object found in output: {text[:200]!r}")
-    return json.loads(text[start:end + 1])
+    try:
+        obj, _ = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"no JSON object found in output: {text[:200]!r}") from exc
+    if not isinstance(obj, dict):
+        raise ValueError(f"expected a JSON object, got {type(obj).__name__}")
+    return obj
 
 
 def validate_with_retry(role: RoleSpec, call_fn: Callable[[str], dict]) -> BaseModel:

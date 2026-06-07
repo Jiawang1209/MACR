@@ -85,3 +85,21 @@ def test_fake_agent_backend_returns_scripted_and_calls_hook():
     msg = fab.run_role(PLANNER, state, run_id="R1", task_id="R1")
     assert msg.content["steps"] == ["a"]
     assert edited == ["planner"]
+
+
+def test_subprocess_runner_timeout_raises_agent_error():
+    import pytest
+    from macr.agents.base import SubprocessRunner
+    from macr.agent import AgentError
+
+    runner = SubprocessRunner()
+    with pytest.raises(AgentError):
+        runner.run(["python", "-c", "import time; time.sleep(5)"], timeout=1)
+
+
+def test_extract_json_ignores_trailing_prose():
+    assert extract_json_object('{"a": {"b": 1}} -- done }') == {"a": {"b": 1}}
+
+
+def test_extract_json_takes_first_of_multiple():
+    assert extract_json_object('{"a": 1}\n{"b": 2}') == {"a": 1}
