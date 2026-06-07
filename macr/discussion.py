@@ -9,11 +9,12 @@ from macr.agents.base import AgentBackend
 from macr.discussion_view import ConsoleView, DiscussionView
 from macr.agents.trace import TraceSink
 from macr.collab_orchestrator import _build_final, _implementation_loop, _record_subagents
-from macr.discuss_roles import CONSENSUS, DISCUSS_PLANNER, DISCUSS_TURN, render_transcript
+from macr.collab_evaluator import evaluate_plan
+from macr.discuss_roles import CONSENSUS, DISCUSS_PLANNER, DISCUSS_REVIEWER, DISCUSS_TURN, render_transcript
 from macr.discussion_control import ControlDecision, interactive_discussion_control
 from macr.human_gate import collab_human_gate, consensus_human_gate
 from macr.runlog import RunLog
-from macr.schemas import HumanFeedback, SharedState
+from macr.schemas import Decision, HumanFeedback, SharedState
 from macr.utils import next_run_id
 from macr.worktree import Worktree
 
@@ -26,6 +27,12 @@ def _disc_dir(run_path: Path) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     return d
 
+
+def _render_findings(reviewer: dict) -> str:
+    lines = [f"[计划审查意见] {reviewer.get('summary', '')}"]
+    for f in reviewer.get("findings", []):
+        lines.append(f"  - ({f.get('level')}) {f.get('issue')} → {f.get('recommendation')}")
+    return "\n".join(lines)
 
 
 def run_discuss(
@@ -40,6 +47,7 @@ def run_discuss(
     worktrees_dir: Path,
     max_rounds: int = 3,
     max_revisions: int = 2,
+    max_plan_revisions: int = 1,
     consensus_gate: HumanGate = consensus_human_gate,
     human_gate: HumanGate = collab_human_gate,
     discussion_control: DiscussionControl = interactive_discussion_control,
@@ -118,6 +126,69 @@ def run_discuss(
                 view.note(f"[consensus blocked] {exc}")
 
             if state.consensus is not None:
+                # Stage D: post-consensus plan review gate (Codex reviews; deterministic evaluator)
+                for attempt in range(max_plan_revisions + 1):
+                    try:
+                        rsink = TraceSink(run_path / "subagents", f"review.v{attempt}")
+                        rmsg = codex_backend.run_role(
+                            DISCUSS_REVIEWER, state, run_id=run_id, task_id=run_id, trace=rsink)
+                        reviewer = rmsg.content
+                        _record_subagents(state, rsink, f"review.v{attempt}", attempt)
+                    except AgentError as exc:
+                        view.note(f"[plan review blocked] {exc}")
+                        reviewer = None
+                    state.reviews.append(reviewer or {})
+                    state.agent_outputs["reviewer"].append(reviewer or {})
+                    if reviewer is not None:
+                        (disc / f"review.v{attempt}.json").write_text(
+                            json.dumps(reviewer, ensure_ascii=False, indent=2), encoding="utf-8")
+                        view.review(attempt, reviewer)
+
+                    decision = evaluate_plan(reviewer)
+                    state.decisions.append(
+                        {"stage": "plan_review", "attempt": attempt, "decision": decision.value})
+                    state.agent_outputs["evaluator"].append({"decision": decision.value})
+                    view.evaluation(attempt, decision)
+
+                    if decision is not Decision.NEEDS_FIX:
+                        break
+                    if attempt == max_plan_revisions:
+                        break  # exhausted → escalate to human gate with unresolved findings
+
+                    # NEEDS_FIX with budget left: inject findings, re-discuss one round, re-consensus
+                    rround = max_rounds + 1 + attempt
+                    findings_text = _render_findings(reviewer)
+                    record(rround, "codex_reviewer", "review", findings_text)
+                    (disc / f"review-round{attempt}.findings.txt").write_text(
+                        findings_text + "\n", encoding="utf-8")
+                    view.note(
+                        f"[plan review] needs_fix → 注回 {len(reviewer.get('findings', []))} 条意见,再谈一轮")
+                    try:
+                        for agent, backend in (("claude", claude_backend), ("codex", codex_backend)):
+                            tsink = TraceSink(run_path / "subagents", f"review-turn.{agent}.v{attempt}")
+                            tmsg = backend.run_role(
+                                DISCUSS_TURN, state, run_id=run_id, task_id=run_id, trace=tsink)
+                            record(rround, agent, "turn", tmsg.content)
+                            _record_subagents(state, tsink, f"review-turn.{agent}", attempt)
+                            (disc / f"review-round{attempt}.{agent}.json").write_text(
+                                json.dumps(tmsg.content, ensure_ascii=False, indent=2), encoding="utf-8")
+                            view.turn(agent, rround, tmsg.content)
+                        csink = TraceSink(run_path / "subagents", f"consensus.v{attempt + 1}")
+                        cmsg = claude_backend.run_role(
+                            CONSENSUS, state, run_id=run_id, task_id=run_id, trace=csink)
+                        state.consensus = cmsg.content
+                        _record_subagents(state, csink, f"consensus.v{attempt + 1}", attempt + 1)
+                        c2 = cmsg.content
+                        log._write(
+                            "consensus.md",
+                            f"# Consensus (rev {attempt + 1})\n\n{c2.get('summary', '')}\n\n## Steps\n"
+                            + "\n".join(f"{i}. {s}" for i, s in enumerate(c2.get('steps', []), 1))
+                            + f"\n\n## Rationale\n{c2.get('rationale', '')}\n")
+                        view.consensus(c2)
+                    except AgentError as exc:
+                        view.note(f"[consensus blocked] {exc}")
+                        break
+
                 fb1 = consensus_gate(state, printer=view.note)
                 state.human_feedback = fb1
                 view.note(f"[human·consensus] {fb1.decision}")
