@@ -55,7 +55,8 @@ def _validate_args(args) -> int | None:
 
     Checks apply by attribute presence, so one function serves all three subcommands.
     """
-    if not args.task.strip():
+    task = getattr(args, "task", None)
+    if task is not None and not task.strip():
         print("error: task/topic 不能为空(请提供非空白的任务描述)", file=sys.stderr)
         return 2
     for name in ("max_revisions", "max_rounds", "max_plan_revisions"):
@@ -125,6 +126,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     discuss_p.add_argument("--tui", action="store_true", help="rich two-pane live view (needs a real terminal)")
     discuss_p.add_argument("--yes", action="store_true",
                            help="无人值守:自动通过共识门与最终人工门(不读 stdin)")
+    web_p = sub.add_parser("web", help="serve the read-only run viewer (V2)")
+    web_p.add_argument("--runs-dir", default=".macr/runs",
+                       help="directory of run records to browse (default: .macr/runs)")
+    web_p.add_argument("--host", default="127.0.0.1", help="bind host (default: 127.0.0.1)")
+    web_p.add_argument("--port", type=int, default=8000, help="bind port (default: 8000)")
     return parser.parse_args(argv)
 
 
@@ -257,13 +263,33 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
     return 0 if state.human_feedback and state.human_feedback.decision == "approve" else 1
 
 
+def _default_serve(app, *, host: str, port: int) -> int:
+    import uvicorn
+
+    uvicorn.run(app, host=host, port=port)
+    return 0
+
+
+def _web_command(args, *, serve) -> int:
+    from macr.web.app import create_app
+
+    runs_dir = Path(args.runs_dir).resolve()
+    spa_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    app = create_app(runs_dir=runs_dir, spa_dist=spa_dist)
+    print(f"MACR run viewer → http://{args.host}:{args.port}  (runs: {runs_dir})")
+    return serve(app, host=args.host, port=args.port)
+
+
 def main(argv: list[str] | None = None, *, llm=None,
          claude_backend=None, codex_backend=None, impl_codex_backend=None,
-         human_gate=None, discussion_control=None, consensus_gate=None, view=None) -> int:
+         human_gate=None, discussion_control=None, consensus_gate=None, view=None,
+         serve=None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     invalid = _validate_args(args)
     if invalid is not None:
         return invalid
+    if args.command == "web":
+        return _web_command(args, serve=serve or _default_serve)
     if args.command == "collab":
         gate = _resolve_gate(args, human_gate, collab_human_gate)
         guard = _non_tty_gate_guard(gate)
