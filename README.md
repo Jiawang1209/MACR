@@ -159,3 +159,18 @@ export ANTHROPIC_API_KEY=sk-...
 ```
 
 产物写入 `.macr/runs/<run_id>/`:`input.md` / `planner.output.md` / `executor.output.md` / `reviewer.output.md` / `evaluator.output.json` / `state.json` / `final.md`。
+
+---
+
+## Claude⟷Codex 异构协作 (Stage A) / Heterogeneous collaboration
+
+> 纯 CLI,不需要 API key。需 `claude` 与 `codex` 已安装并登录 / CLI-only, no API key; requires `claude` and `codex` on PATH.
+
+```bash
+# Claude 出方案/审 diff,Codex 在隔离 worktree 改代码,框架跑测试
+.venv/bin/macr collab "为模块加一个 hello() 函数" \
+    --repo /path/to/target-repo \
+    --test-cmd "pytest -q"
+```
+
+流程:Claude Planner → Codex 在 `.macr/worktrees/<run_id>/` 改代码 → 框架跑 `--test-cmd` → Claude 审 diff+测试 → 规则判定 → 返工(≤ `--max-revisions`)→ Human Gate(approve/reject/edit)。产物在 `.macr/runs/<run_id>/`(含 `diff.vN.patch`、`test.vN.json`、`final.md`)。approve 后 worktree 保留供你手动 merge。
