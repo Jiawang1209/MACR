@@ -96,3 +96,17 @@ def test_discuss_accepts_injected_view(tmp_path, monkeypatch):
     )
     assert rc == 0
     assert any(e[0] == "plan" for e in view.events)
+
+
+def test_discuss_tui_non_tty_uses_auto_control(tmp_path, monkeypatch):
+    # non-tty --tui WITHOUT an injected discussion_control: must auto-advance (not EOFError on input)
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(
+        ["discuss", "build it", "--repo", str(repo), "--test-cmd", "true", "--max-rounds", "1", "--tui"],
+        claude_backend=_claude(), codex_backend=_codex_discuss(), impl_codex_backend=_codex_impl(),
+        consensus_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+        human_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+    )
+    assert rc == 0  # before the fix this would EOFError on the round-boundary input -> rc 2

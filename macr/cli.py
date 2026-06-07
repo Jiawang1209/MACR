@@ -134,9 +134,14 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
             view = ConsoleView()
 
     tui_active = isinstance(view, TwoPaneView) and view.enabled
+    unattended = getattr(args, "auto", False) or not sys.stdout.isatty()
     if discussion_control is None:
-        discussion_control = view.control if tui_active else (
-            auto_discussion_control if getattr(args, "auto", False) else interactive_discussion_control)
+        if unattended:
+            discussion_control = auto_discussion_control
+        elif tui_active:
+            discussion_control = view.control
+        else:
+            discussion_control = interactive_discussion_control
     if consensus_gate is None:
         from macr.human_gate import consensus_human_gate
         consensus_gate = view.consensus_gate if tui_active else consensus_human_gate
