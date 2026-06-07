@@ -55,3 +55,10 @@ class RunLog:
 
     def write_state(self, state: SharedState) -> None:
         self._write("state.json", state.model_dump_json(indent=2))
+
+    def write_diff(self, diff_text: str, attempt: int) -> None:
+        self._write(f"diff.v{attempt}.patch", diff_text)
+
+    def write_test(self, result: dict, log: str, attempt: int) -> None:
+        self._write(f"test.v{attempt}.log", log)
+        self._write(f"test.v{attempt}.json", json.dumps(result, ensure_ascii=False, indent=2))

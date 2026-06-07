@@ -11,6 +11,20 @@ def _latest_artifact(state: SharedState) -> str:
     return items[-1].get("artifact", "") if items else ""
 
 
+def _prompt_decision(
+    input_fn: Callable[[str], str], printer: Callable[..., None], ts: str
+) -> HumanFeedback:
+    printer("\n[a]pprove / [r]eject / [e]dit")
+    choice = input_fn("> ").strip().lower()
+    if choice.startswith("r"):
+        reason = input_fn("Reject reason: ").strip()
+        return HumanFeedback(decision="reject", feedback=reason, timestamp=ts)
+    if choice.startswith("e"):
+        fb = input_fn("Feedback / edits: ").strip()
+        return HumanFeedback(decision="approve", feedback=fb, timestamp=ts)
+    return HumanFeedback(decision="approve", feedback="", timestamp=ts)
+
+
 def interactive_human_gate(
     state: SharedState,
     *,
@@ -23,13 +37,23 @@ def interactive_human_gate(
     printer(f"Task: {state.user_query}")
     printer("Final artifact:\n")
     printer(_latest_artifact(state))
-    printer("\n[a]pprove / [r]eject / [e]dit")
+    return _prompt_decision(input_fn, printer, ts)
 
-    choice = input_fn("> ").strip().lower()
-    if choice.startswith("r"):
-        reason = input_fn("Reject reason: ").strip()
-        return HumanFeedback(decision="reject", feedback=reason, timestamp=ts)
-    if choice.startswith("e"):
-        fb = input_fn("Feedback / edits: ").strip()
-        return HumanFeedback(decision="approve", feedback=fb, timestamp=ts)
-    return HumanFeedback(decision="approve", feedback="", timestamp=ts)
+
+def collab_human_gate(
+    state: SharedState,
+    *,
+    input_fn: Callable[[str], str] = input,
+    printer: Callable[..., None] = print,
+    timestamp: str | None = None,
+) -> HumanFeedback:
+    ts = timestamp or now_iso()
+    diff = state.diffs[-1] if state.diffs else "(no diff)"
+    tr = state.test_results[-1] if state.test_results else {}
+    printer("\n===== Human Gate (collab) =====")
+    printer(f"Task: {state.user_query}")
+    printer(f"Worktree: {state.worktree_path}")
+    printer("\n--- Final diff ---")
+    printer(diff)
+    printer(f"\n--- Tests: passed={tr.get('passed')} exit={tr.get('exit_code')} ---")
+    return _prompt_decision(input_fn, printer, ts)
