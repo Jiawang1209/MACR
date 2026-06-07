@@ -6,6 +6,7 @@ from macr.schemas import (
     DiscussionTurn,
     MessageType,
     PlannerOutput,
+    ReviewerOutput,
     SharedState,
 )
 
@@ -60,6 +61,22 @@ def _consensus_user(state: SharedState) -> str:
     )
 
 
+def _reviewer_user(state: SharedState) -> str:
+    c = state.consensus or {}
+    steps = "\n".join(f"  - {s}" for s in c.get("steps", []))
+    return (
+        f"主题 / Topic:\n{state.topic}\n\n"
+        f"待审查的共识方案(由对方 / Claude 汇总):\n"
+        f"summary: {c.get('summary', '')}\nsteps:\n{steps}\n"
+        f"rationale: {c.get('rationale', '')}\n"
+        f"open_questions: {', '.join(c.get('open_questions', []))}\n\n"
+        f"完整讨论记录:\n{render_transcript(state.discussion)}\n\n"
+        "请独立审查该【方案】(不是代码):summary(总体判断)、"
+        "findings(每条 level / issue / evidence / recommendation)、decision(approve / needs_fix)。"
+        "会导致方案不可行或偏离主题的问题请标 level=blocking。"
+    )
+
+
 DISCUSS_PLANNER = RoleSpec(
     name="discuss_planner", agent_id="discuss_planner", tool_name="submit_plan",
     message_type=MessageType.PROPOSAL, content_model=PlannerOutput,
@@ -88,4 +105,15 @@ CONSENSUS = RoleSpec(
         "输出必须是符合给定 JSON Schema 的对象。"
     ),
     build_user=_consensus_user,
+)
+
+DISCUSS_REVIEWER = RoleSpec(
+    name="discuss_reviewer", agent_id="discuss_reviewer", tool_name="submit_review",
+    message_type=MessageType.REVIEW, content_model=ReviewerOutput,
+    system_prompt=(
+        "你是 MACR 讨论中的独立审查者(由 Codex 扮演)。这份共识方案由对方(Claude)汇总,你未参与汇总。"
+        "请独立、严格地审查该【方案】(不是代码):是否覆盖主题、步骤是否可执行、有无遗漏/风险/不一致。"
+        "把会导致方案不可行或偏离主题的问题标为 blocking。输出必须是符合给定 JSON Schema 的对象。"
+    ),
+    build_user=_reviewer_user,
 )

@@ -1,10 +1,18 @@
 from macr.discuss_roles import (
     CONSENSUS,
     DISCUSS_PLANNER,
+    DISCUSS_REVIEWER,
     DISCUSS_TURN,
     render_transcript,
 )
-from macr.schemas import ConsensusPlan, DiscussionTurn, MessageType, PlannerOutput, SharedState
+from macr.schemas import (
+    ConsensusPlan,
+    DiscussionTurn,
+    MessageType,
+    PlannerOutput,
+    ReviewerOutput,
+    SharedState,
+)
 
 
 def test_role_wiring():
@@ -48,3 +56,20 @@ def test_render_transcript_orders_and_renders_kinds():
     text = render_transcript(disc)
     assert "claude" in text and "codex" in text and "human" in text
     assert "a" in text and "r" in text and "hi" in text
+
+
+def test_reviewer_role_wiring():
+    assert DISCUSS_REVIEWER.content_model is ReviewerOutput
+    assert DISCUSS_REVIEWER.message_type is MessageType.REVIEW
+    assert "独立" in DISCUSS_REVIEWER.system_prompt
+
+
+def test_reviewer_user_has_consensus_and_transcript():
+    s = SharedState(run_id="R1", user_query="t", topic="topic-rev")
+    s.discussion.append({"round": 0, "agent": "claude", "kind": "plan",
+                         "content": {"summary": "disc-sum", "steps": ["d1"]}})
+    s.consensus = {"summary": "cons-sum", "steps": ["cs1"], "rationale": "why", "open_questions": ["oq"]}
+    user = DISCUSS_REVIEWER.build_user(s)
+    assert "topic-rev" in user          # 主题
+    assert "cons-sum" in user and "cs1" in user  # 待审共识
+    assert "disc-sum" in user           # 讨论记录上下文
