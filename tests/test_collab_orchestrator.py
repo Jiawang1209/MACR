@@ -51,6 +51,21 @@ def _run(tmp_path, *, claude_script, codex_script, test_cmd, max_revisions=2, ga
     )
 
 
+def test_collab_announces_run_dir_at_start(tmp_path):
+    """First thing printed is a banner with the run_id + artifact dir."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    lines = []
+    run_collab(
+        "do the task", repo=repo, test_cmd=["true"],
+        claude_backend=FakeAgentBackend({"planner": [_plan()], "reviewer": [_review("approve")]}),
+        codex_backend=FakeAgentBackend({"executor": [_exec(1)]}, on_run=_editor),
+        runs_dir=tmp_path / "runs", worktrees_dir=tmp_path / "wts",
+        human_gate=_approve, printer=lines.append, today="20260607",
+    )
+    assert lines and "R20260607_001" in lines[0] and "artifacts" in lines[0]
+
+
 def test_pass_path(tmp_path):
     state = _run(
         tmp_path,

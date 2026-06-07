@@ -134,6 +134,7 @@ def run_collab(
     log = RunLog(run_path)
     state = SharedState(run_id=run_id, user_query=task, target_repo=str(repo))
     log.write_input(task)
+    printer(f"[run {run_id}] artifacts → {run_path}")
     worktree: Worktree | None = None
 
     try:

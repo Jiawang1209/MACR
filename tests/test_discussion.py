@@ -39,7 +39,7 @@ def _approve(state, **kw):
     return HumanFeedback(decision="approve", feedback="", timestamp="t")
 
 
-def _build(tmp_path, *, control_actions, max_rounds=2, consensus_gate=_approve, final_gate=_approve):
+def _build(tmp_path, *, control_actions, max_rounds=2, consensus_gate=_approve, final_gate=_approve, view=None):
     repo = tmp_path / "repo"
     _init_repo(repo)
     claude = FakeAgentBackend({
@@ -63,8 +63,18 @@ def _build(tmp_path, *, control_actions, max_rounds=2, consensus_gate=_approve, 
         runs_dir=tmp_path / "runs", worktrees_dir=tmp_path / "wts",
         max_rounds=max_rounds, max_revisions=2,
         consensus_gate=consensus_gate, human_gate=final_gate, discussion_control=control,
-        view=SilentView(), today="20260607",
+        view=view or SilentView(), today="20260607",
     )
+
+
+def test_discuss_announces_run_dir_at_start(tmp_path):
+    """The first view event is a banner note with the run_id + artifact dir."""
+    view = FakeView()
+    _build(tmp_path, control_actions=[ControlDecision("end")], view=view)
+    assert view.events
+    kind, text = view.events[0][0], view.events[0][1]
+    assert kind == "note"
+    assert "R20260607_001" in text and "artifacts" in text
 
 
 def test_full_flow_to_implementation(tmp_path):
@@ -156,8 +166,9 @@ def test_view_receives_structured_events(tmp_path):
         view=view, today="20260607",
     )
     kinds = [e[0] for e in view.events]
-    assert kinds[:2] == ["plan", "plan"]
-    assert view.events[0][1] == "claude"
+    assert kinds[0] == "note"  # run banner (run_id + artifact dir) comes first
+    assert kinds[1:3] == ["plan", "plan"]
+    assert view.events[1][1] == "claude"
     assert any(e[0] == "turn" for e in view.events)
     assert any(e[0] == "consensus" for e in view.events)
 

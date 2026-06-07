@@ -47,6 +47,7 @@ def run_task(
     state = SharedState(run_id=run_id, user_query=task)
     log.write_input(task)
     task_id = run_id
+    printer(f"[run {run_id}] artifacts → {run_path}")
 
     try:
         try:

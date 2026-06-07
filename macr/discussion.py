@@ -61,6 +61,7 @@ def run_discuss(
     log = RunLog(run_path)
     state = SharedState(run_id=run_id, user_query=topic, topic=topic, target_repo=str(repo))
     log._write("topic.md", f"{topic}\n")
+    view.note(f"[run {run_id}] artifacts → {run_path}")
     disc = _disc_dir(run_path)
     worktree: Worktree | None = None
     aborted = False

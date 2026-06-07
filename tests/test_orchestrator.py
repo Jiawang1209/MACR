@@ -109,6 +109,15 @@ def test_agent_failure_routes_to_blocked_gate_and_persists_state(tmp_path):
     assert (tmp_path / "R20260606_001" / "state.json").exists()
 
 
+def test_run_task_announces_run_dir_at_start(tmp_path):
+    """First thing printed is a banner with the run_id + artifact dir (locate logs while it runs)."""
+    lines = []
+    llm = FakeLLM([_plan(), _exec(1), _review("approve"), _eval("PASS")])
+    run_task("task", llm, tmp_path, max_revisions=2, human_gate=_approve_gate,
+             printer=lines.append, today="20260606")
+    assert lines and "R20260606_001" in lines[0] and "artifacts" in lines[0]
+
+
 def test_decisions_are_plain_strings_not_enums(tmp_path):
     llm = FakeLLM([_plan(), _exec(1), _review("approve"), _eval("PASS")])
     state = run_task(

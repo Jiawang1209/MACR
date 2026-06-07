@@ -85,6 +85,12 @@
       "type": "file"
     },
     {
+      "path": "macr/orchestrator.py",
+      "accessCount": 7,
+      "lastAccessed": 1780843928461,
+      "type": "file"
+    },
+    {
       "path": "macr/worktree.py",
       "accessCount": 6,
       "lastAccessed": 1780806570474,
@@ -97,9 +103,9 @@
       "type": "file"
     },
     {
-      "path": "macr/orchestrator.py",
+      "path": "tests/test_orchestrator.py",
       "accessCount": 6,
-      "lastAccessed": 1780842337478,
+      "lastAccessed": 1780843850675,
       "type": "file"
     },
     {
@@ -118,12 +124,6 @@
       "path": "tests/test_human_gate.py",
       "accessCount": 5,
       "lastAccessed": 1780825599278,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_orchestrator.py",
-      "accessCount": 4,
-      "lastAccessed": 1780763318795,
       "type": "file"
     },
     {
