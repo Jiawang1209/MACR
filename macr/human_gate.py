@@ -80,4 +80,14 @@ def consensus_human_gate(
     printer(f"\n--- Consensus ---\n{c.get('summary', '')}\n{steps}")
     if c.get("open_questions"):
         printer("Open questions: " + "; ".join(c.get("open_questions", [])))
+    if state.reviews:
+        rv = state.reviews[-1]
+        ev = state.decisions[-1].get("decision") if state.decisions else "?"
+        printer(f"\n--- Plan review / 计划审查 ---")
+        printer(f"Reviewer decision: {rv.get('decision', '?')}  (evaluator: {ev})")
+        blocking = [f for f in rv.get("findings", []) if f.get("level") == "blocking"]
+        if blocking:
+            printer("Blocking:")
+            for f in blocking:
+                printer(f"  - {f.get('issue')} → {f.get('recommendation')}")
     return _prompt_decision(input_fn, printer, ts)
