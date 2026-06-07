@@ -149,6 +149,47 @@ def test_codex_nonzero_surfaces_stream_error_over_stderr():
     assert "Reading additional input" not in str(ei.value)
 
 
+def test_claude_argv_contract():
+    """Pin the exact claude CLI flags we send — regression guard against arg drift.
+
+    Fakes can only freeze the contract we *think* the CLI has (dogfood finding 5,
+    where a fake test froze a wrong codex flag). This pins claude's argv explicitly.
+    """
+    runner = FakeProcessRunner([ProcResult(0, _claude_stream(_plan()), "")])
+    backend = ClaudeCliBackend(runner=runner, model="claude-x")
+    state = SharedState(run_id="R1", user_query="task", worktree_path="/tmp/wt")
+    backend.run_role(PLANNER_C, state, run_id="R1", task_id="R1", timestamp="t")
+    argv = runner.calls[0]["argv"]
+    assert argv[0] == "claude"
+    assert "-p" in argv
+    assert argv[argv.index("--output-format") + 1] == "stream-json"
+    assert "--verbose" in argv
+    assert "--include-partial-messages" in argv
+    assert "--allowedTools" in argv
+    assert argv[argv.index("--model") + 1] == "claude-x"
+    # codex's removed approval flag must never leak onto the claude argv either
+    assert "--ask-for-approval" not in argv
+
+
+def test_codex_sandbox_value_reaches_argv():
+    """The configured sandbox flows to `codex exec --sandbox <value>` (guards dogfood finding 1).
+
+    discuss wires read-only for the reviewer codex and workspace-write for the impl codex;
+    if that wiring drifts, the reviewer could gain write access or the impl lose it.
+    """
+    for sandbox in ("read-only", "workspace-write"):
+        inner = {"artifact": "x", "notes": "", "evidence": []}
+        runner = FakeProcessRunner([ProcResult(0, _codex_stream(inner), "")])
+        backend = CodexCliBackend(runner=runner, sandbox=sandbox)
+        state = SharedState(run_id="R1", user_query="task", worktree_path="/tmp/wt")
+        backend.run_role(EXECUTOR_C, state, run_id="R1", task_id="R1", timestamp="t")
+        argv = runner.calls[0]["argv"]
+        assert argv[0] == "codex" and argv[1] == "exec"
+        assert argv[argv.index("--sandbox") + 1] == sandbox
+        # codex exec is non-interactive and rejects this flag (dogfood finding 1/5)
+        assert "--ask-for-approval" not in argv
+
+
 def test_codex_nonzero_falls_back_to_stderr_when_no_stream_error():
     from macr.agent import AgentError
     from macr.agents.base import FakeProcessRunner, ProcResult
