@@ -1,4 +1,5 @@
-from macr.discussion_view import ConsoleView, FakeView, SilentView
+from macr.discussion_view import ConsoleView, FakeView, SilentView, TwoPaneView
+from macr.schemas import Decision
 
 
 def _plan():
@@ -56,7 +57,6 @@ def test_views_are_context_managers():
 
 
 def test_two_pane_routes_to_buffers():
-    from macr.discussion_view import TwoPaneView
     v = TwoPaneView(enabled=False)  # no Live; buffers only
     v.plan("claude", {"summary": "csum", "steps": ["cs1"]})
     v.plan("codex", {"summary": "xsum", "steps": ["xs1"]})
@@ -72,7 +72,6 @@ def test_two_pane_routes_to_buffers():
 
 def test_two_pane_render_contains_text():
     from rich.console import Console
-    from macr.discussion_view import TwoPaneView
     v = TwoPaneView(enabled=False)
     v.plan("claude", {"summary": "HELLO-CLAUDE", "steps": []})
     v.plan("codex", {"summary": "HELLO-CODEX", "steps": []})
@@ -84,7 +83,6 @@ def test_two_pane_render_contains_text():
 
 
 def test_two_pane_non_tty_does_not_start_live():
-    from macr.discussion_view import TwoPaneView
     v = TwoPaneView(enabled=False)
     with v:
         v.note("x")  # must not raise, no Live
@@ -92,9 +90,46 @@ def test_two_pane_non_tty_does_not_start_live():
 
 
 def test_two_pane_control_delegates(monkeypatch):
-    from macr.discussion_view import TwoPaneView
     from macr.schemas import SharedState
     v = TwoPaneView(enabled=False)
     monkeypatch.setattr("builtins.input", lambda prompt="": "c")
     d = v.control(SharedState(run_id="R1", user_query="q", topic="z"), 1)
     assert d.action == "continue"
+
+
+def _review():
+    return {"summary": "rev-sum",
+            "findings": [{"level": "blocking", "issue": "missing X", "evidence": "e", "recommendation": "add X"}],
+            "decision": "needs_fix"}
+
+
+def test_console_view_review_and_evaluation_output():
+    out = []
+    v = ConsoleView(out=out.append)
+    v.review(0, _review())
+    v.evaluation(0, Decision.NEEDS_FIX)
+    joined = "\n".join(out)
+    assert "rev-sum" in joined and "missing X" in joined
+    assert "NEEDS_FIX" in joined
+
+
+def test_silent_view_review_evaluation_noop():
+    v = SilentView()
+    v.review(0, _review())
+    v.evaluation(0, Decision.PASS)  # must not raise
+
+
+def test_fake_view_records_review_and_evaluation():
+    v = FakeView()
+    v.review(1, _review())
+    v.evaluation(1, Decision.PASS)
+    assert ("review", 1, _review()) == v.events[0]
+    assert v.events[1] == ("evaluation", 1, Decision.PASS)
+
+
+def test_two_pane_view_review_goes_to_status_lines():
+    v = TwoPaneView(enabled=False)
+    v.review(0, _review())
+    v.evaluation(0, Decision.NEEDS_FIX)
+    joined = "\n".join(v.status_lines)
+    assert "rev-sum" in joined and "NEEDS_FIX" in joined

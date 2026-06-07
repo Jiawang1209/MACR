@@ -10,6 +10,8 @@ class DiscussionView(Protocol):
     def interjection(self, round_no: int, text: str) -> None: ...
     def status(self, text: str) -> None: ...
     def consensus(self, content: dict) -> None: ...
+    def review(self, attempt: int, content: dict) -> None: ...
+    def evaluation(self, attempt: int, decision) -> None: ...
     def note(self, text: str) -> None: ...
 
 
@@ -48,6 +50,15 @@ class ConsoleView:
     def consensus(self, content: dict) -> None:
         self._out(f"\n━━━ 共识 / Consensus ━━━\n{content.get('summary', '')}")
 
+    def review(self, attempt: int, content: dict) -> None:
+        self._out(f"\n━━━ 计划审查 (Codex) · 第 {attempt} 次 ━━━\n{content.get('summary', '')}")
+        for f in content.get("findings", []):
+            self._out(f"  - ({f.get('level')}) {f.get('issue')} → {f.get('recommendation')}")
+
+    def evaluation(self, attempt: int, decision) -> None:
+        val = getattr(decision, "value", decision)
+        self._out(f"[评估] 第 {attempt} 次审查判定:{val}")
+
     def note(self, text: str) -> None:
         self._out(text)
 
@@ -66,6 +77,8 @@ class SilentView:
     def interjection(self, round_no: int, text: str) -> None: ...
     def status(self, text: str) -> None: ...
     def consensus(self, content: dict) -> None: ...
+    def review(self, attempt: int, content: dict) -> None: ...
+    def evaluation(self, attempt: int, decision) -> None: ...
     def note(self, text: str) -> None: ...
 
 
@@ -95,6 +108,12 @@ class FakeView:
 
     def consensus(self, content: dict) -> None:
         self.events.append(("consensus", content))
+
+    def review(self, attempt: int, content: dict) -> None:
+        self.events.append(("review", attempt, content))
+
+    def evaluation(self, attempt: int, decision) -> None:
+        self.events.append(("evaluation", attempt, decision))
 
     def note(self, text: str) -> None:
         self.events.append(("note", text))
@@ -181,6 +200,17 @@ class TwoPaneView:
 
     def consensus(self, content: dict) -> None:
         self.status_lines.append("共识 / Consensus: " + content.get("summary", ""))
+        self._refresh()
+
+    def review(self, attempt: int, content: dict) -> None:
+        self.status_lines.append(f"计划审查#{attempt}: {content.get('summary', '')}")
+        for f in content.get("findings", []):
+            self.status_lines.append(f"  ({f.get('level')}) {f.get('issue')}")
+        self._refresh()
+
+    def evaluation(self, attempt: int, decision) -> None:
+        val = getattr(decision, "value", decision)
+        self.status_lines.append(f"评估#{attempt}: {val}")
         self._refresh()
 
     def note(self, text: str) -> None:
