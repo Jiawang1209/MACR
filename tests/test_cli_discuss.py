@@ -64,6 +64,8 @@ def test_discuss_abort_returns_one(tmp_path, monkeypatch):
         ["discuss", "build it", "--repo", str(repo), "--test-cmd", "true", "--max-rounds", "1"],
         claude_backend=_claude(), codex_backend=_codex_discuss(), impl_codex_backend=_codex_impl(),
         discussion_control=lambda s, r, **kw: ControlDecision("abort"),
+        consensus_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+        human_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
     )
     assert rc == 1
 
@@ -130,3 +132,34 @@ def test_discuss_max_plan_revisions_threaded(tmp_path, monkeypatch):
     assert rc == 0
     # max_plan_revisions=0 => exactly one review, no revision rounds
     assert codex.calls.count("discuss_reviewer") == 1
+
+
+def test_discuss_yes_auto_approves_without_stdin(tmp_path, monkeypatch):
+    """--yes makes both gates auto-approve; no stdin read; zero exit."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(
+        ["discuss", "build it", "--repo", str(repo), "--test-cmd", "true",
+         "--max-rounds", "1", "--yes"],
+        claude_backend=_claude(), codex_backend=_codex_discuss(), impl_codex_backend=_codex_impl(),
+        discussion_control=lambda s, r, **kw: ControlDecision("end"),
+        # NOTE: do NOT inject gates — let --yes wire auto_approve_gate
+    )
+    assert rc == 0
+
+
+def test_discuss_non_tty_without_yes_errors_clearly(tmp_path, monkeypatch, capsys):
+    """Non-TTY + interactive gates + no --yes → exit 2 with a --yes hint (not raw EOFError)."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    rc = cli.main(
+        ["discuss", "build it", "--repo", str(repo), "--test-cmd", "true", "--max-rounds", "1"],
+        claude_backend=_claude(), codex_backend=_codex_discuss(), impl_codex_backend=_codex_impl(),
+        discussion_control=lambda s, r, **kw: ControlDecision("end"),
+        # gates NOT injected → resolve to interactive console gates → guard fires
+    )
+    assert rc == 2
+    assert "--yes" in capsys.readouterr().err

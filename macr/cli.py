@@ -46,6 +46,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     discuss_p.add_argument("--auto", action="store_true", help="skip round-boundary pauses")
     discuss_p.add_argument("--no-subagents", action="store_true")
     discuss_p.add_argument("--tui", action="store_true", help="rich two-pane live view (needs a real terminal)")
+    discuss_p.add_argument("--yes", action="store_true",
+                           help="无人值守:自动通过共识门与最终人工门(不读 stdin)")
     return parser.parse_args(argv)
 
 
@@ -144,11 +146,26 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
             discussion_control = view.control
         else:
             discussion_control = interactive_discussion_control
+    from macr.human_gate import auto_approve_gate, consensus_human_gate
+    auto_gate = getattr(args, "yes", False)
     if consensus_gate is None:
-        from macr.human_gate import consensus_human_gate
-        consensus_gate = view.consensus_gate if tui_active else consensus_human_gate
+        if auto_gate:
+            consensus_gate = auto_approve_gate
+        else:
+            consensus_gate = view.consensus_gate if tui_active else consensus_human_gate
     if human_gate is None:
-        human_gate = view.final_gate if tui_active else collab_human_gate
+        if auto_gate:
+            human_gate = auto_approve_gate
+        else:
+            human_gate = view.final_gate if tui_active else collab_human_gate
+
+    # 非 TTY 且未给 --yes 且门为交互式 console 门 → 会因读不到 stdin 而 EOF;提前清晰报错。
+    if not sys.stdout.isatty() and not auto_gate and (
+        consensus_gate is consensus_human_gate or human_gate is collab_human_gate
+    ):
+        print("error: 非交互环境(非 TTY)下运行 discuss 需要 --yes 自动通过人工门;"
+              "否则人工门会因无法读取 stdin 而失败。", file=sys.stderr)
+        return 2
 
     try:
         with view:
