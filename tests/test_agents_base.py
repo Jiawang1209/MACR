@@ -103,3 +103,27 @@ def test_extract_json_ignores_trailing_prose():
 
 def test_extract_json_takes_first_of_multiple():
     assert extract_json_object('{"a": 1}\n{"b": 2}') == {"a": 1}
+
+
+def test_subprocess_runner_uses_devnull_stdin_when_no_input(monkeypatch):
+    """Regression (dogfood): codex exec reads <stdin> when stdin is inherited; the runner
+    must redirect stdin to DEVNULL when no input_text is supplied so non-TTY runs don't hang/err."""
+    import subprocess as _sp
+
+    from macr.agents.base import SubprocessRunner
+
+    captured = {}
+
+    class _Done:
+        returncode = 0
+        stdout = "{}"
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        captured.update(kwargs)
+        return _Done()
+
+    monkeypatch.setattr(_sp, "run", fake_run)
+    SubprocessRunner().run(["codex", "exec", "x"])
+    assert captured.get("stdin") is _sp.DEVNULL
+    assert "input" not in captured or captured.get("input") is None

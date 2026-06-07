@@ -33,9 +33,11 @@ class SubprocessRunner:
 
     def run(self, argv, *, cwd=None, input_text=None, timeout=None) -> ProcResult:
         try:
+            # When no input is supplied, redirect stdin to DEVNULL so child CLIs (e.g.
+            # `codex exec`) don't try to read an inherited stdin in non-TTY runs.
+            kwargs = {"input": input_text} if input_text is not None else {"stdin": subprocess.DEVNULL}
             proc = subprocess.run(
-                argv, cwd=cwd, input=input_text,
-                capture_output=True, text=True, timeout=timeout,
+                argv, cwd=cwd, capture_output=True, text=True, timeout=timeout, **kwargs,
             )
         except subprocess.TimeoutExpired as exc:
             raise AgentError(f"process timed out after {timeout}s: {' '.join(map(str, argv[:2]))}") from exc
