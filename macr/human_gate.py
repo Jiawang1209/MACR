@@ -28,10 +28,12 @@ def _prompt_decision(
 def interactive_human_gate(
     state: SharedState,
     *,
-    input_fn: Callable[[str], str] = input,
+    input_fn: Callable[[str], str] | None = None,
     printer: Callable[..., None] = print,
     timestamp: str | None = None,
 ) -> HumanFeedback:
+    if input_fn is None:
+        input_fn = input
     ts = timestamp or now_iso()
     printer("\n===== Human Gate =====")
     printer(f"Task: {state.user_query}")
@@ -43,10 +45,12 @@ def interactive_human_gate(
 def collab_human_gate(
     state: SharedState,
     *,
-    input_fn: Callable[[str], str] = input,
+    input_fn: Callable[[str], str] | None = None,
     printer: Callable[..., None] = print,
     timestamp: str | None = None,
 ) -> HumanFeedback:
+    if input_fn is None:
+        input_fn = input
     ts = timestamp or now_iso()
     diff = state.diffs[-1] if state.diffs else "(no diff)"
     tr = state.test_results[-1] if state.test_results else {}
@@ -62,10 +66,12 @@ def collab_human_gate(
 def consensus_human_gate(
     state: SharedState,
     *,
-    input_fn: Callable[[str], str] = input,
+    input_fn: Callable[[str], str] | None = None,
     printer: Callable[..., None] = print,
     timestamp: str | None = None,
 ) -> HumanFeedback:
+    if input_fn is None:
+        input_fn = input
     ts = timestamp or now_iso()
     c = state.consensus or {}
     steps = "\n".join(f"  {i}. {s}" for i, s in enumerate(c.get("steps", []), 1))

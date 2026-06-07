@@ -16,9 +16,11 @@ def interactive_discussion_control(
     state: SharedState,
     round_no: int,
     *,
-    input_fn: Callable[[str], str] = input,
+    input_fn: Callable[[str], str] | None = None,
     printer: Callable[..., None] = print,
 ) -> ControlDecision:
+    if input_fn is None:
+        input_fn = input
     printer(f"\n── 回合 {round_no} 边界 ── [c]继续 / [i]插话 / [e]提前定稿 / [a]中止")
     choice = input_fn("> ").strip().lower()
     if choice.startswith("i"):
