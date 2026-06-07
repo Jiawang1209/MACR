@@ -27,7 +27,7 @@
 | 6 | `check.py` 转绿 | 🟢 `test.v1.json` `passed=true, exit_code=0, log="OK"` |
 | 7 | claude reviewer / evaluator | 🟢 `approve` / `PASS` |
 | 8 | `run --yes` 接线(无 API key 上限) | 🟡 见发现 B |
-| 9 | **worktree diff 被工具副作用文件污染** | 🔴 见发现 A(真 finding) |
+| 9 | **worktree diff 被工具副作用文件污染** | 🔴→🟢 见发现 A(**已修 + 真机验证**) |
 
 ## 3. 发现详情
 
@@ -48,13 +48,13 @@ worktree 的副作用文件)。
 fragility(`git add -A` 太激进)是普适的 —— 任何写 CWD 的工具都会污染 diff。
 `__pycache__` 这次未进 diff,仅因它由 `check.py`(测试)生成,而测试在 diff 捕获之后才跑。
 
-**候选修法(待定,见文末决定)**:
-- (a) 计算 diff 时按 pathspec 排除普适临时目录:
-  `git diff --cached -- . ':(exclude).omc' ':(exclude)**/__pycache__' ':(exclude)*.pyc'`。
-  保留合法新文件,去掉已知噪声;不太 hardcode(这些是普适 ephemeral 模式)。
-- (b) 只 diff 已跟踪文件(`git diff` 不 `add -A`):会漏掉 agent **新建**的合法源文件。
-- (c) 往 worktree 注入 `.gitignore`:会改动 worktree 状态。
-- 倾向 (a)。
+**修复(已落实,`macr/worktree.py`)**:采用 pathspec 排除(候选 a)。`diff()` 仍 `git add -A`,
+但 `git diff --cached -- . <excludes>` 排除 `.omc/`、`**/__pycache__/`、`**/*.pyc`,保留合法
+新文件与改动。`_DIFF_EXCLUDES` 常量便于扩展。collab+discuss 同步受益。
+
+**真机验证**:同条件重跑 `collab --yes`,worktree 里**仍真实写入 `.omc/`**(污染源真实存在),
+但 `diff.v1.patch` 现在**只含 `mymod.py`**(`.omc` 出现 0 次),完整路径仍全绿(approve / 退 0)。
+单测 `test_diff_excludes_tooling_and_cache_noise` 覆盖该场景。
 
 ### 🟡 发现 B — `run --yes` 接线已验证,完整 API 闭环受 key 阻塞
 本机未设 `ANTHROPIC_API_KEY`,`run`(单模型 API 路径)无法跑完整 planner→executor→
@@ -66,4 +66,5 @@ reviewer→evaluator→auto-approve。已用**对照**验证 `--yes` 接线正�
 ## 4. 已验证 / 未决
 **已验证(真机)**:`collab --yes` 全闭环;`--yes` 自动门 + 非 TTY 守卫 + 起手/收尾 banner
 在真机异构运行下全部生效;codex 真写文件、测试转绿、approve、退 0、产物齐全。
-**未决**:发现 A 的 diff 污染修法(待决定);发现 B 的 run 完整 API 闭环(待 key)。
+**已修复**:发现 A(diff 污染)—— pathspec 排除,单测 + 真机重跑双重验证。
+**未决**:发现 B 的 run 完整 API 闭环(待 `ANTHROPIC_API_KEY`)。
