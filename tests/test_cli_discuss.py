@@ -30,6 +30,7 @@ def _codex_discuss():
     return FakeAgentBackend({
         "discuss_planner": [{"summary": "p2", "steps": ["s2"], "tools_needed": [], "risks": []}],
         "discuss_turn": [{"response": "r2", "agreements": [], "concerns": [], "revised_steps": []}] * 4,
+        "discuss_reviewer": [{"summary": "ok", "findings": [], "decision": "approve"}] * 2,
     })
 
 
@@ -110,3 +111,22 @@ def test_discuss_tui_non_tty_uses_auto_control(tmp_path, monkeypatch):
         human_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
     )
     assert rc == 0  # before the fix this would EOFError on the round-boundary input -> rc 2
+
+
+def test_discuss_max_plan_revisions_threaded(tmp_path, monkeypatch):
+    """--max-plan-revisions reaches run_discuss; reviewer runs and zero exit on approve."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    codex = _codex_discuss()
+    rc = cli.main(
+        ["discuss", "build it", "--repo", str(repo), "--test-cmd", "true",
+         "--max-rounds", "1", "--max-plan-revisions", "0"],
+        claude_backend=_claude(), codex_backend=codex, impl_codex_backend=_codex_impl(),
+        discussion_control=lambda s, r, **kw: ControlDecision("end"),
+        consensus_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+        human_gate=lambda s, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+    )
+    assert rc == 0
+    # max_plan_revisions=0 => exactly one review, no revision rounds
+    assert codex.calls.count("discuss_reviewer") == 1

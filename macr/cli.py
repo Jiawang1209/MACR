@@ -38,6 +38,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     discuss_p.add_argument("--test-cmd", required=True)
     discuss_p.add_argument("--max-rounds", type=int, default=3)
     discuss_p.add_argument("--max-revisions", type=int, default=2)
+    discuss_p.add_argument("--max-plan-revisions", type=int, default=1,
+                           help="共识后计划审查的最大修订次数(0=只审一次不修订)")
     discuss_p.add_argument("--claude-model", default=None)
     discuss_p.add_argument("--codex-model", default=None)
     discuss_p.add_argument("--timeout", type=int, default=1800)
@@ -157,6 +159,7 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
                 claude_backend=claude_backend, codex_backend=codex_backend, impl_codex_backend=impl_codex_backend,
                 runs_dir=Path(".macr/runs").resolve(), worktrees_dir=Path(".macr/worktrees").resolve(),
                 max_rounds=args.max_rounds, max_revisions=args.max_revisions,
+                max_plan_revisions=args.max_plan_revisions,
                 discussion_control=discussion_control, consensus_gate=consensus_gate, human_gate=human_gate,
                 view=view, timeout=args.timeout,
             )
