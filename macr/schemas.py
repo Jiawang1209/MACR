@@ -67,6 +67,14 @@ class HumanFeedback(BaseModel):
     timestamp: str
 
 
+class TestResult(BaseModel):
+    command: str
+    passed: bool
+    exit_code: int
+    log: str = ""
+    timed_out: bool = False
+
+
 # --- Envelope + shared state ---
 
 class Message(BaseModel):
@@ -94,3 +102,7 @@ class SharedState(BaseModel):
     decisions: list[dict] = Field(default_factory=list)
     human_feedback: HumanFeedback | None = None
     final_output: str | None = None
+    target_repo: str | None = None
+    worktree_path: str | None = None
+    diffs: list[str] = Field(default_factory=list)
+    test_results: list[dict] = Field(default_factory=list)
