@@ -19,5 +19,6 @@ class ApiBackend:
         self._llm = llm
 
     def run_role(self, role: RoleSpec, state: SharedState, *,
-                 run_id: str, task_id: str, timestamp: str | None = None) -> Message:
+                 run_id: str, task_id: str, timestamp: str | None = None,
+                 trace=None) -> Message:
         return run_agent(role, state, self._llm, task_id=task_id, run_id=run_id, timestamp=timestamp)

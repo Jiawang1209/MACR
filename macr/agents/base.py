@@ -12,6 +12,7 @@ from macr.agent import AgentError
 from macr.roles import RoleSpec
 from macr.schemas import Message, SharedState
 from macr.utils import now_iso
+from macr.agents.trace import TraceSink
 
 
 @dataclass
@@ -46,7 +47,8 @@ class AgentBackend(Protocol):
     name: str
 
     def run_role(self, role: RoleSpec, state: SharedState, *,
-                 run_id: str, task_id: str, timestamp: str | None = None) -> Message: ...
+                 run_id: str, task_id: str, timestamp: str | None = None,
+                 trace: "TraceSink | None" = None) -> Message: ...
 
 
 def extract_json_object(text: str) -> dict:
@@ -68,19 +70,24 @@ def extract_json_object(text: str) -> dict:
 
 
 def validate_with_retry(role: RoleSpec, call_fn: Callable[[str], dict]) -> BaseModel:
-    """call_fn(extra_note) -> raw dict. Validate into role.content_model with one retry."""
-    raw = call_fn("")
+    """call_fn(extra_note) -> raw dict. Validate into role.content_model with one retry.
+
+    Retries once on schema validation failure (ValidationError) or output-parse
+    failure (ValueError from extract_json_object / a failed parse); a second
+    failure -> AgentError.
+    """
     try:
+        raw = call_fn("")
         return role.content_model(**raw)
-    except ValidationError as first:
+    except (ValidationError, ValueError) as first:
         note = (
             "\n\nPrevious output failed validation:\n"
             f"{first}\nReturn corrected JSON only, matching the schema."
         )
-        raw = call_fn(note)
         try:
+            raw = call_fn(note)
             return role.content_model(**raw)
-        except ValidationError as second:
+        except (ValidationError, ValueError) as second:
             raise AgentError(f"{role.name} failed schema validation twice: {second}") from second
 
 
@@ -110,23 +117,30 @@ class FakeProcessRunner:
 
 
 class FakeAgentBackend:
-    """AgentBackend test double: scripted content per role name; optional on_run side effect."""
+    """AgentBackend test double: scripted content per role name; optional on_run side effect.
+
+    Optionally captures scripted SubagentRecords into a provided trace sink.
+    """
 
     name = "fake"
 
     def __init__(self, scripted: dict[str, list[dict]],
-                 on_run: Callable[[RoleSpec, SharedState], None] | None = None):
+                 on_run: Callable[[RoleSpec, SharedState], None] | None = None,
+                 subagents: dict[str, list] | None = None):
         self._scripted = {k: list(v) for k, v in scripted.items()}
         self._on_run = on_run
+        self._subagents = subagents or {}
         self.calls: list[str] = []
 
-    def run_role(self, role, state, *, run_id, task_id, timestamp=None) -> Message:
+    def run_role(self, role, state, *, run_id, task_id, timestamp=None, trace=None) -> Message:
         self.calls.append(role.name)
         if self._on_run is not None:
             self._on_run(role, state)
         if not self._scripted.get(role.name):
             raise AssertionError(f"FakeAgentBackend has no scripted output for role '{role.name}'")
         content = self._scripted[role.name].pop(0)
+        if trace is not None and self._subagents.get(role.name):
+            trace.capture(["{}"], list(self._subagents[role.name]))
         return Message(
             task_id=task_id, run_id=run_id, agent_id=role.agent_id, role=role.name,
             message_type=role.message_type, content=content, timestamp=timestamp or "t",
