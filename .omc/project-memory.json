@@ -10,7 +10,7 @@
   },
   "build": {
     "buildCommand": null,
-    "testCommand": "cd /Users/liuyue/Desktop/Github_repos/MACR; .venv/bin/python -m pytest 2>&1 | tail -3",
+    "testCommand": "cd /Users/liuyue/Desktop/Github_repos/MACR; .venv/bin/python -m pytest tests/test_worktree.py -q 2>&1 | tail -5; echo \"=== full suite ===\"; .venv/bin/python -m pytest 2>&1 | tail -3",
     "lintCommand": null,
     "devCommand": null,
     "scripts": {}
@@ -61,21 +61,27 @@
       "type": "file"
     },
     {
+      "path": "docs/roadmap.md",
+      "accessCount": 12,
+      "lastAccessed": 1780844255517,
+      "type": "file"
+    },
+    {
       "path": "tests/test_cli.py",
       "accessCount": 11,
       "lastAccessed": 1780843654606,
       "type": "file"
     },
     {
-      "path": "docs/roadmap.md",
-      "accessCount": 10,
-      "lastAccessed": 1780841813662,
-      "type": "file"
-    },
-    {
       "path": "macr/runlog.py",
       "accessCount": 10,
       "lastAccessed": 1780842320616,
+      "type": "file"
+    },
+    {
+      "path": "macr/worktree.py",
+      "accessCount": 9,
+      "lastAccessed": 1780846439552,
       "type": "file"
     },
     {
@@ -88,12 +94,6 @@
       "path": "macr/orchestrator.py",
       "accessCount": 7,
       "lastAccessed": 1780843928461,
-      "type": "file"
-    },
-    {
-      "path": "macr/worktree.py",
-      "accessCount": 6,
-      "lastAccessed": 1780806570474,
       "type": "file"
     },
     {
@@ -184,6 +184,12 @@
       "path": "macr/__init__.py",
       "accessCount": 3,
       "lastAccessed": 1780843483968,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_worktree.py",
+      "accessCount": 3,
+      "lastAccessed": 1780846397936,
       "type": "file"
     },
     {
@@ -304,12 +310,6 @@
       "path": "tests/test_schemas_collab.py",
       "accessCount": 1,
       "lastAccessed": 1780794645521,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_worktree.py",
-      "accessCount": 1,
-      "lastAccessed": 1780794822571,
       "type": "file"
     },
     {

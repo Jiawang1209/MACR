@@ -9,6 +9,17 @@ class WorktreeError(RuntimeError):
     """Raised when the target repo is invalid or a git worktree op fails."""
 
 
+# Files written into the worktree by agent tooling / language caches during a run.
+# Excluded from the captured diff so they don't pollute the reviewer/human-gate/final
+# output. (dogfood v2 finding A: `git add -A` was pulling .omc/ into the diff.)
+_DIFF_EXCLUDES = (
+    ":(exclude).omc",
+    ":(exclude,glob).omc/**",
+    ":(exclude,glob)**/__pycache__/**",
+    ":(exclude,glob)**/*.pyc",
+)
+
+
 def _git(args: list[str], cwd: Path) -> subprocess.CompletedProcess:
     proc = subprocess.run(
         ["git", *args], cwd=str(cwd), capture_output=True, text=True
@@ -46,7 +57,7 @@ class Worktree:
 
     def diff(self) -> str:
         _git(["add", "-A"], self.path)
-        return _git(["diff", "--cached"], self.path).stdout
+        return _git(["diff", "--cached", "--", ".", *_DIFF_EXCLUDES], self.path).stdout
 
     def cleanup(self) -> None:
         _git(["worktree", "remove", "--force", str(self.path)], self.repo)
