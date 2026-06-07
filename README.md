@@ -189,3 +189,13 @@ export ANTHROPIC_API_KEY=sk-...
 ```
 
 产物在 `.macr/runs/<run_id>/`:`discussion/`(双计划、各轮 JSON、人插话、`transcript.md`)、`consensus.md`,随后是实现阶段的 diff/test/review/final。讨论步两个 agent 只读 worktree,仅实现步 Codex 可写。
+
+#### 双栏实况视图 (Stage C2) / Two-pane live view
+
+给 `macr discuss` 加 `--tui`,用 `rich` 左右两栏(Claude / Codex)+ 底部状态/人声面板实时围观讨论;需真终端,非终端自动回退到逐轮单栏(C1 行为)。
+
+```bash
+.venv/bin/macr discuss "为模块加 hello() 函数" --repo /path/to/repo --test-cmd "pytest -q" --tui
+```
+
+每轮边界仍是 `[c]继续 / [i]插话 / [e]定稿 / [a]中止`(rich 会短暂让位给输入);不加 `--tui` 时行为与 C1 完全一致。
