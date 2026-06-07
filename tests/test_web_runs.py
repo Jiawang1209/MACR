@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from macr.web.runs import (
-    RunCorrupt, RunNotFound, infer_command_type, load_run,
+    ArtifactError, RunCorrupt, RunNotFound, infer_command_type, list_runs, load_run, read_artifact,
 )
 
 
@@ -138,3 +138,39 @@ def test_load_run_discuss_stage_sequence(tmp_path):
     assert impl_review.body["summary"] == "impl-rv"
     pr = next(s for s in detail.stages if s.kind == "plan_review")
     assert pr.status == "PASS" and pr.body["summary"] == "plan-rv"
+
+
+def test_list_runs_newest_first_and_marks_broken(tmp_path):
+    _write_run(tmp_path, "R20260607_001", _collab_state())
+    _write_run(tmp_path, "R20260607_002", _run_state())
+    broken = tmp_path / "R20260607_003"
+    broken.mkdir()
+    (broken / "state.json").write_text("{ broken", encoding="utf-8")
+    summaries = list_runs(tmp_path)
+    ids = [s.run_id for s in summaries]
+    assert ids == ["R20260607_003", "R20260607_002", "R20260607_001"]  # newest first
+    assert summaries[0].broken is True
+    assert summaries[1].command_type == "run"
+    assert summaries[2].command_type == "collab" and summaries[2].decision == "approve"
+
+
+def test_list_runs_empty_dir(tmp_path):
+    assert list_runs(tmp_path) == []
+
+
+def test_read_artifact_returns_text(tmp_path):
+    _write_run(tmp_path, "R1", _collab_state())
+    (tmp_path / "R1" / "diff.v1.patch").write_text("the diff", encoding="utf-8")
+    assert read_artifact(tmp_path, "R1", "diff.v1.patch") == "the diff"
+
+
+def test_read_artifact_rejects_traversal(tmp_path):
+    _write_run(tmp_path, "R1", _collab_state())
+    for bad in ("../R1/state.json", "/etc/passwd", "sub/../../x", "a/b"):
+        with pytest.raises(ArtifactError):
+            read_artifact(tmp_path, "R1", bad)
+
+
+def test_read_artifact_missing_run_raises_not_found(tmp_path):
+    with pytest.raises(RunNotFound):
+        read_artifact(tmp_path, "nope", "diff.v1.patch")

@@ -188,3 +188,40 @@ def _stages_discuss(state: dict) -> list[Stage]:
     if g:
         stages.append(g)
     return stages
+
+
+def list_runs(runs_dir: Path) -> list[RunSummary]:
+    runs_dir = Path(runs_dir)
+    if not runs_dir.is_dir():
+        return []
+    out: list[RunSummary] = []
+    for d in sorted((p for p in runs_dir.iterdir() if p.is_dir()),
+                    key=lambda p: p.name, reverse=True):
+        run_id = d.name
+        try:
+            state = _load_state(runs_dir, run_id)
+        except RunNotFound:
+            continue
+        except RunCorrupt:
+            out.append(RunSummary(run_id=run_id, command_type="unknown", task="", broken=True))
+            continue
+        out.append(RunSummary(
+            run_id=run_id,
+            command_type=infer_command_type(state),
+            task=_task_text(state),
+            decision=_final_decision(state),
+        ))
+    return out
+
+
+def read_artifact(runs_dir: Path, run_id: str, name: str) -> str:
+    run_dir = Path(runs_dir) / run_id
+    if not (run_dir / "state.json").is_file():
+        raise RunNotFound(run_id)
+    # name must be a bare filename that resolves to a file directly inside run_dir.
+    if name != Path(name).name or name in ("", ".", ".."):
+        raise ArtifactError(f"invalid artifact name: {name!r}")
+    target = (run_dir / name).resolve()
+    if target.parent != run_dir.resolve() or not target.is_file():
+        raise ArtifactError(f"artifact not found: {name!r}")
+    return target.read_text(encoding="utf-8")
