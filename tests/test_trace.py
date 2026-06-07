@@ -44,6 +44,25 @@ def test_parse_codex_stream_tolerates_garbage():
     assert final_text == "" and subs == []
 
 
+def test_parse_claude_stream_ignores_non_string_parent():
+    import json as _json
+    final_text, subs = parse_claude_stream([
+        _json.dumps({"parent_tool_use_id": {"x": 1}}),
+        _json.dumps({"parent_tool_use_id": ["y"]}),
+    ])
+    assert subs == [] and final_text == ""
+
+
+def test_parse_codex_stream_ignores_non_string_thread_id():
+    import json as _json
+    lines = [
+        _json.dumps({"type": "thread.started", "thread_id": 1}),
+        _json.dumps({"type": "thread.started", "thread_id": 2}),
+    ]
+    final_text, subs = parse_codex_stream(lines)
+    assert subs == [] and final_text == ""
+
+
 def test_trace_sink_capture_writes_two_files(tmp_path):
     sink = TraceSink(tmp_path / "subagents", "planner.v1")
     sink.capture(['{"a":1}', '{"b":2}'],

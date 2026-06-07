@@ -58,7 +58,7 @@ def parse_claude_stream(lines: list[str]) -> tuple[str, list[SubagentRecord]]:
     seen: set[str] = set()
     for o in objs:
         parent = o.get("parent_tool_use_id")
-        if parent and parent not in seen:
+        if isinstance(parent, str) and parent and parent not in seen:
             seen.add(parent)
             refs.append(parent)
 
@@ -80,7 +80,7 @@ def parse_codex_stream(lines: list[str]) -> tuple[str, list[SubagentRecord]]:
     for o in objs:
         if o.get("type") == "thread.started":
             tid = o.get("thread_id") or (o.get("thread") or {}).get("id")
-            if tid:
+            if isinstance(tid, str) and tid:
                 threads.append(tid)
 
     final_text = ""

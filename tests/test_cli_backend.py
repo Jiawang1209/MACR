@@ -118,3 +118,16 @@ def test_codex_captures_trace(tmp_path):
     backend.run_role(EXECUTOR_C, state, run_id="R1", task_id="R1", timestamp="t", trace=sink)
     assert (tmp_path / "executor.v1.subagents.json").exists()
     assert len(sink.records) == 1 and sink.records[0].ref == "sub-1"
+
+
+def test_claude_capture_failure_does_not_crash_run(tmp_path):
+    class _BadSink(TraceSink):
+        def capture(self, raw_lines, subagents):
+            raise OSError("disk full")
+
+    runner = FakeProcessRunner([ProcResult(0, _claude_stream(_plan()), "")])
+    backend = ClaudeCliBackend(runner=runner)
+    bad = _BadSink(tmp_path, "planner.v1")
+    state = SharedState(run_id="R1", user_query="task")
+    msg = backend.run_role(PLANNER_C, state, run_id="R1", task_id="R1", timestamp="t", trace=bad)
+    assert msg.content["steps"] == ["a"]  # run succeeds despite capture failure

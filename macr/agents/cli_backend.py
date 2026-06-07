@@ -62,7 +62,11 @@ class ClaudeCliBackend:
 
         content = validate_with_retry(role, call_fn)
         if trace is not None:
-            trace.capture(captured["lines"], captured["subs"])
+            try:
+                trace.capture(captured["lines"], captured["subs"])
+            except OSError:
+                # spec §9: trace capture is incidental; never fail the run on a write error
+                pass
         return message_from_content(role, content, run_id=run_id, task_id=task_id, timestamp=timestamp)
 
 
@@ -105,5 +109,9 @@ class CodexCliBackend:
 
         content = validate_with_retry(role, call_fn)
         if trace is not None:
-            trace.capture(captured["lines"], captured["subs"])
+            try:
+                trace.capture(captured["lines"], captured["subs"])
+            except OSError:
+                # spec §9: trace capture is incidental; never fail the run on a write error
+                pass
         return message_from_content(role, content, run_id=run_id, task_id=task_id, timestamp=timestamp)
