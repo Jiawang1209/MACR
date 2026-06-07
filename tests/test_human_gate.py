@@ -34,3 +34,15 @@ def test_edit_is_approve_with_feedback():
         timestamp="t",
     )
     assert hf.decision == "approve" and hf.feedback == "tweak the wording"
+
+
+def test_auto_approve_gate_approves_without_reading_stdin():
+    from macr.human_gate import auto_approve_gate
+    from macr.schemas import SharedState
+
+    def _boom(_prompt):
+        raise AssertionError("auto_approve_gate must not read stdin")
+
+    s = SharedState(run_id="R1", user_query="q")
+    hf = auto_approve_gate(s, input_fn=_boom, printer=lambda *_: None, timestamp="t")
+    assert hf.decision == "approve" and hf.timestamp == "t"

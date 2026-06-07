@@ -91,3 +91,15 @@ def consensus_human_gate(
             for f in blocking:
                 printer(f"  - {f.get('issue')} → {f.get('recommendation')}")
     return _prompt_decision(input_fn, printer, ts)
+
+
+def auto_approve_gate(
+    state: SharedState,
+    *,
+    input_fn: Callable[[str], str] | None = None,
+    printer: Callable[..., None] = print,
+    timestamp: str | None = None,
+) -> HumanFeedback:
+    """Unattended gate: approve without reading stdin (used by `discuss --yes`)."""
+    printer("\n[auto-approve] gate passed without prompting (--yes)")
+    return HumanFeedback(decision="approve", feedback="", timestamp=timestamp or now_iso())
