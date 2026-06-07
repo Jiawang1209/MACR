@@ -77,12 +77,11 @@ class CodexCliBackend:
 
     def __init__(self, *, model: str | None = None, runner: ProcessRunner | None = None,
                  codex_bin: str = "codex", sandbox: str = "workspace-write",
-                 approval: str = "never", timeout: int = 1800, enable_subagents: bool = True):
+                 timeout: int = 1800, enable_subagents: bool = True):
         self.model = model
         self.runner = runner or SubprocessRunner()
         self.codex_bin = codex_bin
         self.sandbox = sandbox
-        self.approval = approval
         self.timeout = timeout
         self.enable_subagents = enable_subagents
 
@@ -92,9 +91,9 @@ class CodexCliBackend:
         captured: dict = {"lines": [], "subs": []}
 
         def call_fn(extra: str) -> dict:
+            # `codex exec` is non-interactive; it has no approval flag (sandbox governs writes).
             argv = [self.codex_bin, "exec", prompt + extra,
-                    "--cd", cwd, "--sandbox", self.sandbox,
-                    "--ask-for-approval", self.approval, "--json"]
+                    "--cd", cwd, "--sandbox", self.sandbox, "--json"]
             if not self.enable_subagents:
                 argv += ["-c", "features.multi_agent=false"]
             if self.model:

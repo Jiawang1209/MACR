@@ -96,7 +96,9 @@ def test_codex_streaming_parses_and_argv():
     argv = runner.calls[0]["argv"]
     assert argv[0] == "codex" and argv[1] == "exec"
     assert "--json" in argv and "--cd" in argv and "/tmp/wt" in argv
-    assert "--sandbox" in argv and "--ask-for-approval" in argv
+    # codex exec is non-interactive and has no approval flag (regression: dogfood found
+    # `codex exec` rejects --ask-for-approval on codex >=0.137)
+    assert "--sandbox" in argv and "--ask-for-approval" not in argv
 
 
 def test_codex_no_subagents_disables_multi_agent():
