@@ -10,7 +10,7 @@ from macr.agents.base import (
     message_from_content,
     validate_with_retry,
 )
-from macr.agents.trace import TraceSink, parse_claude_stream, parse_codex_stream
+from macr.agents.trace import TraceSink, parse_claude_stream, parse_codex_stream, stream_error
 from macr.roles import RoleSpec
 from macr.schemas import Message, SharedState
 
@@ -54,7 +54,8 @@ class ClaudeCliBackend:
                 argv += ["--model", self.model]
             res = self.runner.run(argv, cwd=cwd, timeout=self.timeout)
             if res.returncode != 0:
-                raise AgentError(f"claude CLI exited {res.returncode}: {res.stderr.strip()}")
+                detail = stream_error(res.stdout.splitlines(), source="claude") or res.stderr.strip()
+                raise AgentError(f"claude CLI exited {res.returncode}: {detail}")
             lines = res.stdout.splitlines()
             final_text, subs = parse_claude_stream(lines)
             captured["lines"], captured["subs"] = lines, subs
@@ -100,7 +101,8 @@ class CodexCliBackend:
                 argv += ["--model", self.model]
             res = self.runner.run(argv, timeout=self.timeout)
             if res.returncode != 0:
-                raise AgentError(f"codex CLI exited {res.returncode}: {res.stderr.strip()}")
+                detail = stream_error(res.stdout.splitlines(), source="codex") or res.stderr.strip()
+                raise AgentError(f"codex CLI exited {res.returncode}: {detail}")
             lines = res.stdout.splitlines()
             final_text, subs = parse_codex_stream(lines)
             captured["lines"], captured["subs"] = lines, subs

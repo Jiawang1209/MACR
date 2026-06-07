@@ -133,3 +133,29 @@ def test_claude_capture_failure_does_not_crash_run(tmp_path):
     state = SharedState(run_id="R1", user_query="task")
     msg = backend.run_role(PLANNER_C, state, run_id="R1", task_id="R1", timestamp="t", trace=bad)
     assert msg.content["steps"] == ["a"]  # run succeeds despite capture failure
+
+
+def test_codex_nonzero_surfaces_stream_error_over_stderr():
+    from macr.agent import AgentError
+    from macr.agents.base import FakeProcessRunner, ProcResult
+
+    stdout = '{"type":"turn.started"}\n{"type":"turn.failed","error":{"message":"usage limit"}}'
+    runner = FakeProcessRunner([ProcResult(1, stdout, "Reading additional input from stdin...")])
+    backend = CodexCliBackend(runner=runner)
+    state = SharedState(run_id="R1", user_query="task", worktree_path="/tmp/wt")
+    with pytest.raises(AgentError) as ei:
+        backend.run_role(EXECUTOR_C, state, run_id="R1", task_id="R1", timestamp="t")
+    assert "usage limit" in str(ei.value)
+    assert "Reading additional input" not in str(ei.value)
+
+
+def test_codex_nonzero_falls_back_to_stderr_when_no_stream_error():
+    from macr.agent import AgentError
+    from macr.agents.base import FakeProcessRunner, ProcResult
+
+    runner = FakeProcessRunner([ProcResult(2, "", "boom on stderr")])
+    backend = CodexCliBackend(runner=runner)
+    state = SharedState(run_id="R1", user_query="task", worktree_path="/tmp/wt")
+    with pytest.raises(AgentError) as ei:
+        backend.run_role(EXECUTOR_C, state, run_id="R1", task_id="R1", timestamp="t")
+    assert "boom on stderr" in str(ei.value)
