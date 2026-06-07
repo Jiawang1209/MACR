@@ -29,6 +29,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     collab_p.add_argument("--claude-model", default=None)
     collab_p.add_argument("--codex-model", default=None)
     collab_p.add_argument("--timeout", type=int, default=1800)
+    collab_p.add_argument("--no-subagents", action="store_true",
+                          help="disable native subagents in Claude/Codex")
     return parser.parse_args(argv)
 
 
@@ -62,10 +64,13 @@ def _collab_command(args, *, claude_backend, codex_backend, human_gate) -> int:
             return 2
         from macr.agents.cli_backend import ClaudeCliBackend, CodexCliBackend
 
+        enable = not getattr(args, "no_subagents", False)
         if claude_backend is None:
-            claude_backend = ClaudeCliBackend(model=args.claude_model, timeout=args.timeout)
+            claude_backend = ClaudeCliBackend(
+                model=args.claude_model, timeout=args.timeout, enable_subagents=enable)
         if codex_backend is None:
-            codex_backend = CodexCliBackend(model=args.codex_model, timeout=args.timeout)
+            codex_backend = CodexCliBackend(
+                model=args.codex_model, timeout=args.timeout, enable_subagents=enable)
 
     try:
         state = run_collab(
