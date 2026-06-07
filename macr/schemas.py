@@ -68,6 +68,7 @@ class HumanFeedback(BaseModel):
 
 
 class TestResult(BaseModel):
+    __test__ = False  # tell pytest this is not a test class despite the name
     command: str
     passed: bool
     exit_code: int
