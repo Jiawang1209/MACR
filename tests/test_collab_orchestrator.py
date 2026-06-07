@@ -127,7 +127,7 @@ def test_agent_error_routes_to_blocked_gate_and_persists(tmp_path):
     class _RaisingBackend:
         name = "raising"
 
-        def run_role(self, role, state, *, run_id, task_id, timestamp=None):
+        def run_role(self, role, state, *, run_id, task_id, timestamp=None, **kwargs):
             raise AgentError("planner failed twice")
 
     repo = tmp_path / "repo"

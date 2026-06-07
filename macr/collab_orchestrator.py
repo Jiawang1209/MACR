@@ -5,6 +5,7 @@ from typing import Callable
 
 from macr.agent import AgentError
 from macr.agents.base import AgentBackend
+from macr.agents.trace import TraceSink
 from macr.collab_evaluator import evaluate_collab
 from macr.collab_roles import EXECUTOR_C, PLANNER_C, REVIEWER_C
 from macr.human_gate import collab_human_gate
@@ -15,6 +16,13 @@ from macr.utils import next_run_id
 from macr.worktree import Worktree
 
 HumanGate = Callable[..., HumanFeedback]
+
+
+def _record_subagents(state: SharedState, sink: TraceSink, role: str, attempt: int) -> None:
+    types = sorted({r.agent_type for r in sink.records})
+    state.subagents.append(
+        {"role": role, "attempt": attempt, "count": len(sink.records), "types": types}
+    )
 
 
 def _build_final(state: SharedState) -> str:
@@ -29,6 +37,12 @@ def _build_final(state: SharedState) -> str:
         f"\n## Decision trail\n{trail}",
         f"\n## Final diff\n```diff\n{diff}\n```",
     ]
+    if state.subagents:
+        overview = "\n".join(
+            f"- {s['role']} v{s['attempt']}: {s['count']} subagent(s) {s['types']}"
+            for s in state.subagents
+        )
+        parts.append(f"\n## 嵌套 subagent 概览 / Nested subagents\n{overview}")
     hf = state.human_feedback
     if hf is not None:
         parts.append(f"\n## Human decision\n{hf.decision}")
@@ -63,17 +77,23 @@ def run_collab(
         worktree = Worktree.create(repo, run_id, worktrees_dir)
         state.worktree_path = str(worktree.path)
         try:
-            planner_msg = claude_backend.run_role(PLANNER_C, state, run_id=run_id, task_id=run_id)
+            planner_sink = TraceSink(run_path / "subagents", "planner.v1")
+            planner_msg = claude_backend.run_role(
+                PLANNER_C, state, run_id=run_id, task_id=run_id, trace=planner_sink)
             state.agent_outputs["planner"].append(planner_msg.content)
             state.task_plan = list(planner_msg.content.get("steps", []))
             log.write_planner(planner_msg.content)
+            _record_subagents(state, planner_sink, "planner", 1)
             printer(f"[planner] {planner_msg.content.get('summary', '')}")
 
             total_attempts = max_revisions + 1
             for attempt in range(1, total_attempts + 1):
-                exec_msg = codex_backend.run_role(EXECUTOR_C, state, run_id=run_id, task_id=run_id)
+                exec_sink = TraceSink(run_path / "subagents", f"executor.v{attempt}")
+                exec_msg = codex_backend.run_role(
+                    EXECUTOR_C, state, run_id=run_id, task_id=run_id, trace=exec_sink)
                 state.agent_outputs["executor"].append(exec_msg.content)
                 log.write_executor(exec_msg.content, attempt)
+                _record_subagents(state, exec_sink, "executor", attempt)
 
                 diff = worktree.diff()
                 state.diffs.append(diff)
@@ -84,10 +104,13 @@ def run_collab(
                 log.write_test(tr.model_dump(), tr.log, attempt)
                 printer(f"[tests #{attempt}] passed={tr.passed}")
 
-                review_msg = claude_backend.run_role(REVIEWER_C, state, run_id=run_id, task_id=run_id)
+                review_sink = TraceSink(run_path / "subagents", f"reviewer.v{attempt}")
+                review_msg = claude_backend.run_role(
+                    REVIEWER_C, state, run_id=run_id, task_id=run_id, trace=review_sink)
                 state.agent_outputs["reviewer"].append(review_msg.content)
                 state.reviews.append(review_msg.content)
                 log.write_reviewer(review_msg.content)
+                _record_subagents(state, review_sink, "reviewer", attempt)
                 printer(f"[reviewer] {review_msg.content.get('decision', '')}")
 
                 decision = evaluate_collab(test_result=tr, reviewer=review_msg.content, agent_failed=False)
