@@ -104,3 +104,25 @@ def test_consensus_reject_skips_implementation(tmp_path):
     assert state.consensus is not None
     assert state.human_feedback.decision == "reject"
     assert state.decisions == []
+
+
+def test_abort_keeps_worktree(tmp_path):
+    state = _build(tmp_path, control_actions=[ControlDecision("abort")])
+    assert (tmp_path / "wts" / "R20260607_001").exists()
+    assert state.worktree_path is not None
+
+
+def test_consensus_reject_keeps_worktree(tmp_path):
+    def reject(state, **kw):
+        return HumanFeedback(decision="reject", feedback="no", timestamp="t")
+    state = _build(tmp_path, control_actions=[ControlDecision("end")], consensus_gate=reject)
+    assert (tmp_path / "wts" / "R20260607_001").exists()
+    assert state.worktree_path is not None
+
+
+def test_final_reject_cleans_worktree(tmp_path):
+    def reject(state, **kw):
+        return HumanFeedback(decision="reject", feedback="no", timestamp="t")
+    state = _build(tmp_path, control_actions=[ControlDecision("end")], final_gate=reject)
+    assert not (tmp_path / "wts" / "R20260607_001").exists()
+    assert state.worktree_path is None

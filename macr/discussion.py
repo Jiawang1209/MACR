@@ -69,6 +69,7 @@ def run_discuss(
     disc = _disc_dir(run_path)
     worktree: Worktree | None = None
     aborted = False
+    final_rejected = False
 
     def record(round_no, agent, kind, content):
         state.discussion.append({"round": round_no, "agent": agent, "kind": kind, "content": content})
@@ -146,15 +147,16 @@ def run_discuss(
                         test_cmd=test_cmd, max_revisions=max_revisions, timeout=timeout, printer=printer)
                     fb2 = human_gate(state, printer=printer)
                     state.human_feedback = fb2
+                    final_rejected = fb2.decision == "reject"
                     printer(f"[human·final] {fb2.decision}")
 
         final = _build_final(state)
         state.final_output = final
         log.write_final(final)
 
-        if worktree is not None and (
-            aborted or (state.human_feedback is not None and state.human_feedback.decision == "reject")
-        ):
+        # spec §3/§10: keep the worktree on abort and on consensus reject (preserve the scene for
+        # inspection); only clean it up when the FINAL gate② rejected.
+        if worktree is not None and final_rejected:
             worktree.cleanup()
             state.worktree_path = None
     finally:
