@@ -82,6 +82,20 @@ class SubagentRecord(BaseModel):
     ref: str = ""
 
 
+class DiscussionTurn(BaseModel):
+    response: str
+    agreements: list[str] = Field(default_factory=list)
+    concerns: list[str] = Field(default_factory=list)
+    revised_steps: list[str] = Field(default_factory=list)
+
+
+class ConsensusPlan(BaseModel):
+    summary: str
+    steps: list[str]
+    rationale: str
+    open_questions: list[str] = Field(default_factory=list)
+
+
 # --- Envelope + shared state ---
 
 class Message(BaseModel):
@@ -114,3 +128,6 @@ class SharedState(BaseModel):
     diffs: list[str] = Field(default_factory=list)
     test_results: list[dict] = Field(default_factory=list)
     subagents: list[dict] = Field(default_factory=list)
+    topic: str | None = None
+    discussion: list[dict] = Field(default_factory=list)
+    consensus: dict | None = None
