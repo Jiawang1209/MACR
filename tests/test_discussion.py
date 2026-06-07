@@ -5,6 +5,7 @@ from pathlib import Path
 from macr.agents.base import FakeAgentBackend
 from macr.discussion import run_discuss
 from macr.discussion_control import ControlDecision
+from macr.discussion_view import FakeView, SilentView
 from macr.schemas import HumanFeedback
 
 
@@ -61,7 +62,7 @@ def _build(tmp_path, *, control_actions, max_rounds=2, consensus_gate=_approve, 
         runs_dir=tmp_path / "runs", worktrees_dir=tmp_path / "wts",
         max_rounds=max_rounds, max_revisions=2,
         consensus_gate=consensus_gate, human_gate=final_gate, discussion_control=control,
-        printer=lambda *_: None, today="20260607",
+        view=SilentView(), today="20260607",
     )
 
 
@@ -126,3 +127,33 @@ def test_final_reject_cleans_worktree(tmp_path):
     state = _build(tmp_path, control_actions=[ControlDecision("end")], final_gate=reject)
     assert not (tmp_path / "wts" / "R20260607_001").exists()
     assert state.worktree_path is None
+
+
+def test_view_receives_structured_events(tmp_path):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    claude = FakeAgentBackend({
+        "discuss_planner": [_plan("c")],
+        "discuss_turn": [_turn("c1")],
+        "consensus": [_consensus()],
+        "reviewer": [{"summary": "ok", "findings": [], "decision": "approve"}],
+    })
+    codex_discuss = FakeAgentBackend({"discuss_planner": [_plan("x")], "discuss_turn": [_turn("x1")]})
+    codex_impl = FakeAgentBackend({"executor": [{"artifact": "done", "notes": "", "evidence": []}]}, on_run=_editor)
+    view = FakeView()
+    actions = iter([ControlDecision("continue"), ControlDecision("end")])
+    from macr.discussion import run_discuss
+    run_discuss(
+        "topic", repo=repo, test_cmd=["true"],
+        claude_backend=claude, codex_backend=codex_discuss, impl_codex_backend=codex_impl,
+        runs_dir=tmp_path / "runs", worktrees_dir=tmp_path / "wts",
+        max_rounds=1, max_revisions=2,
+        consensus_gate=_approve, human_gate=_approve,
+        discussion_control=lambda s, r, **kw: next(actions),
+        view=view, today="20260607",
+    )
+    kinds = [e[0] for e in view.events]
+    assert kinds[:2] == ["plan", "plan"]
+    assert view.events[0][1] == "claude"
+    assert any(e[0] == "turn" for e in view.events)
+    assert any(e[0] == "consensus" for e in view.events)

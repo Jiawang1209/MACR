@@ -6,6 +6,7 @@ from typing import Callable
 
 from macr.agent import AgentError
 from macr.agents.base import AgentBackend
+from macr.discussion_view import ConsoleView, DiscussionView
 from macr.agents.trace import TraceSink
 from macr.collab_orchestrator import _build_final, _implementation_loop, _record_subagents
 from macr.discuss_roles import CONSENSUS, DISCUSS_PLANNER, DISCUSS_TURN, render_transcript
@@ -26,21 +27,6 @@ def _disc_dir(run_path: Path) -> Path:
     return d
 
 
-def _print_plan(printer, agent: str, content: dict) -> None:
-    printer(f"\n━━━ {agent} · 第 0 轮(计划)━━━")
-    printer(content.get("summary", ""))
-    for s in content.get("steps", []):
-        printer(f"  - {s}")
-
-
-def _print_turn(printer, agent: str, round_no: int, content: dict) -> None:
-    printer(f"\n━━━ {agent} · 第 {round_no} 轮 ━━━")
-    if content.get("concerns"):
-        printer("[concerns] " + "; ".join(content["concerns"]))
-    printer("[response] " + content.get("response", ""))
-    if content.get("revised_steps"):
-        printer("[revised steps] " + "; ".join(content["revised_steps"]))
-
 
 def run_discuss(
     topic: str,
@@ -57,10 +43,11 @@ def run_discuss(
     consensus_gate: HumanGate = consensus_human_gate,
     human_gate: HumanGate = collab_human_gate,
     discussion_control: DiscussionControl = interactive_discussion_control,
-    printer: Callable[..., None] = print,
+    view: DiscussionView | None = None,
     today: str | None = None,
     timeout: int = 1800,
 ) -> SharedState:
+    view = view or ConsoleView()
     run_id = next_run_id(runs_dir, today=today)
     run_path = runs_dir / run_id
     log = RunLog(run_path)
@@ -87,7 +74,7 @@ def run_discuss(
                     f"# {agent} plan\n\n{msg.content.get('summary','')}\n\n"
                     + "\n".join(f"- {s}" for s in msg.content.get("steps", [])) + "\n",
                     encoding="utf-8")
-                _print_plan(printer, agent, msg.content)
+                view.plan(agent, msg.content)
 
             for round_no in range(0, max_rounds + 1):
                 if round_no >= 1:
@@ -98,20 +85,20 @@ def run_discuss(
                         _record_subagents(state, sink, f"turn.{agent}", round_no)
                         (disc / f"round{round_no}.{agent}.json").write_text(
                             json.dumps(msg.content, ensure_ascii=False, indent=2), encoding="utf-8")
-                        _print_turn(printer, agent, round_no, msg.content)
+                        view.turn(agent, round_no, msg.content)
 
-                decision = discussion_control(state, round_no, printer=printer)
+                decision = discussion_control(state, round_no, printer=view.note)
                 if decision.action == "abort":
                     aborted = True
                     break
                 if decision.action == "interject" and decision.interjection:
                     record(round_no, "human", "interjection", decision.interjection)
                     (disc / f"round{round_no}.human.txt").write_text(decision.interjection + "\n", encoding="utf-8")
-                    printer(f"\n━━━ 你(human)· 第 {round_no} 轮后插话 ━━━\n{decision.interjection}")
+                    view.interjection(round_no, decision.interjection)
                 if decision.action == "end":
                     break
         except AgentError as exc:
-            printer(f"[discussion blocked] {exc}")
+            view.note(f"[discussion blocked] {exc}")
 
         (disc / "transcript.md").write_text(render_transcript(state.discussion) + "\n", encoding="utf-8")
 
@@ -126,14 +113,14 @@ def run_discuss(
                            f"# Consensus\n\n{c.get('summary','')}\n\n## Steps\n"
                            + "\n".join(f"{i}. {s}" for i, s in enumerate(c.get('steps', []), 1))
                            + f"\n\n## Rationale\n{c.get('rationale','')}\n")
-                printer(f"\n━━━ 共识 / Consensus ━━━\n{c.get('summary','')}")
+                view.consensus(c)
             except AgentError as exc:
-                printer(f"[consensus blocked] {exc}")
+                view.note(f"[consensus blocked] {exc}")
 
             if state.consensus is not None:
-                fb1 = consensus_gate(state, printer=printer)
+                fb1 = consensus_gate(state, printer=view.note)
                 state.human_feedback = fb1
-                printer(f"[human·consensus] {fb1.decision}")
+                view.note(f"[human·consensus] {fb1.decision}")
                 if fb1.decision == "approve":
                     state.agent_outputs["planner"].append({
                         "summary": state.consensus.get("summary", ""),
@@ -144,11 +131,11 @@ def run_discuss(
                     _implementation_loop(
                         state, run_path=run_path, log=log, worktree=worktree,
                         claude_backend=claude_backend, codex_backend=impl_codex_backend,
-                        test_cmd=test_cmd, max_revisions=max_revisions, timeout=timeout, printer=printer)
-                    fb2 = human_gate(state, printer=printer)
+                        test_cmd=test_cmd, max_revisions=max_revisions, timeout=timeout, printer=view.status)
+                    fb2 = human_gate(state, printer=view.note)
                     state.human_feedback = fb2
                     final_rejected = fb2.decision == "reject"
-                    printer(f"[human·final] {fb2.decision}")
+                    view.note(f"[human·final] {fb2.decision}")
 
         final = _build_final(state)
         state.final_output = final
