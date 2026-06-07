@@ -199,3 +199,13 @@ export ANTHROPIC_API_KEY=sk-...
 ```
 
 每轮边界仍是 `[c]继续 / [i]插话 / [e]定稿 / [a]中止`(rich 会短暂让位给输入);不加 `--tui` 时行为与 C1 完全一致。
+
+#### 共识后计划审查门 (Stage D) / Post-consensus plan review gate
+
+`macr discuss` 在 Claude+Codex 谈出共识方案后、进人工门之前,自动让 **Codex 独立审查**该共识方案(审方案不审代码);确定性 Evaluator 判 `PASS/NEEDS_FIX/BLOCKED`。`NEEDS_FIX` 会把审查意见注回讨论、两方再谈一轮、重新汇总后再审,限 `--max-plan-revisions` 次;耗尽仍不过则把未决意见呈给人工门。
+
+```bash
+.venv/bin/macr discuss "为模块加 hello() 函数" --repo /path/to/repo --test-cmd "pytest -q" --max-plan-revisions 1
+```
+
+`--max-plan-revisions 0` 表示只审一次、不自动修订(纯咨询门)。

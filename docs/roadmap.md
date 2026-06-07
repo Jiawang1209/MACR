@@ -11,6 +11,7 @@
 - 支持 Planner → Executor → Reviewer → Evaluator 闭环;
 - 结果写入 `.macr/runs/`,支持 Markdown / JSON 日志;
 - 用 Claude + Codex 软件开发协作做自验证。
+- Stage D:`discuss` 共识后插入 Codex 计划审查门(独立审查 + 确定性评估 + 限次修订,耗尽升人工门)。
 
 ### V2:Web 控制台
 - Next.js 前端;
