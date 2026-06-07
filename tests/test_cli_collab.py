@@ -63,3 +63,50 @@ def test_collab_missing_binary_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(cli.shutil, "which", lambda name: None)
     rc = cli.main(["collab", "do it", "--repo", str(repo), "--test-cmd", "true"])
     assert rc == 2
+
+
+def test_collab_prints_artifact_path(tmp_path, monkeypatch, capsys):
+    """At the end of collab, the .macr/runs/<id> artifact dir is printed."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(
+        ["collab", "do it", "--repo", str(repo), "--test-cmd", "true"],
+        claude_backend=_claude(),
+        codex_backend=_codex(),
+        human_gate=lambda state, **kw: HumanFeedback(decision="approve", feedback="", timestamp="t"),
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "artifacts" in out
+    assert ".macr/runs" in out
+
+
+def test_collab_yes_auto_approves_without_stdin(tmp_path, monkeypatch):
+    """--yes makes the human gate auto-approve; no stdin read; zero exit."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(
+        ["collab", "do it", "--repo", str(repo), "--test-cmd", "true", "--yes"],
+        claude_backend=_claude(),
+        codex_backend=_codex(),
+        # NOTE: do NOT inject human_gate — let --yes wire auto_approve_gate
+    )
+    assert rc == 0
+
+
+def test_collab_non_tty_without_yes_errors_clearly(tmp_path, monkeypatch, capsys):
+    """Non-TTY + interactive gate + no --yes → exit 2 with a --yes hint (not raw EOFError)."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    rc = cli.main(
+        ["collab", "do it", "--repo", str(repo), "--test-cmd", "true"],
+        claude_backend=_claude(),
+        codex_backend=_codex(),
+        # gate NOT injected → resolves to interactive collab gate → guard fires
+    )
+    assert rc == 2
+    assert "--yes" in capsys.readouterr().err

@@ -1,0 +1,335 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1780758454423,
+  "projectRoot": "/Users/liuyue/Desktop/Github_repos/MACR",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "cd /Users/liuyue/Desktop/Github_repos/MACR; .venv/bin/python -m pytest 2>&1 | tail -3",
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {},
+  "hotPaths": [
+    {
+      "path": "macr/cli.py",
+      "accessCount": 45,
+      "lastAccessed": 1780843592820,
+      "type": "file"
+    },
+    {
+      "path": "macr/schemas.py",
+      "accessCount": 29,
+      "lastAccessed": 1780819981582,
+      "type": "file"
+    },
+    {
+      "path": "macr/agents/base.py",
+      "accessCount": 24,
+      "lastAccessed": 1780842309301,
+      "type": "file"
+    },
+    {
+      "path": "macr/human_gate.py",
+      "accessCount": 20,
+      "lastAccessed": 1780842308445,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 18,
+      "lastAccessed": 1780827118214,
+      "type": "file"
+    },
+    {
+      "path": "docs/roadmap.md",
+      "accessCount": 10,
+      "lastAccessed": 1780841813662,
+      "type": "file"
+    },
+    {
+      "path": "macr/runlog.py",
+      "accessCount": 10,
+      "lastAccessed": 1780842320616,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_cli.py",
+      "accessCount": 10,
+      "lastAccessed": 1780843559736,
+      "type": "file"
+    },
+    {
+      "path": "macr/collab_evaluator.py",
+      "accessCount": 8,
+      "lastAccessed": 1780820093651,
+      "type": "file"
+    },
+    {
+      "path": "macr/worktree.py",
+      "accessCount": 6,
+      "lastAccessed": 1780806570474,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_collab_evaluator.py",
+      "accessCount": 6,
+      "lastAccessed": 1780819414381,
+      "type": "file"
+    },
+    {
+      "path": "macr/orchestrator.py",
+      "accessCount": 6,
+      "lastAccessed": 1780842337478,
+      "type": "file"
+    },
+    {
+      "path": "macr/agent.py",
+      "accessCount": 5,
+      "lastAccessed": 1780795976016,
+      "type": "file"
+    },
+    {
+      "path": "macr/collab_roles.py",
+      "accessCount": 5,
+      "lastAccessed": 1780806563135,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_human_gate.py",
+      "accessCount": 5,
+      "lastAccessed": 1780825599278,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_orchestrator.py",
+      "accessCount": 4,
+      "lastAccessed": 1780763318795,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-06-07-macr-stage-a-claude-codex-collab-design.md",
+      "accessCount": 4,
+      "lastAccessed": 1780795957372,
+      "type": "file"
+    },
+    {
+      "path": "macr/roles.py",
+      "accessCount": 4,
+      "lastAccessed": 1780805905659,
+      "type": "file"
+    },
+    {
+      "path": "macr/utils.py",
+      "accessCount": 4,
+      "lastAccessed": 1780806131216,
+      "type": "file"
+    },
+    {
+      "path": "docs/message_protocol.md",
+      "accessCount": 3,
+      "lastAccessed": 1780759288597,
+      "type": "file"
+    },
+    {
+      "path": "MACR_Multi-Agent_Collaborative_Reasoning_Framework.md",
+      "accessCount": 3,
+      "lastAccessed": 1780759734944,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-06-06-macr-v1-cli-mvp-design.md",
+      "accessCount": 3,
+      "lastAccessed": 1780763048581,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_runlog.py",
+      "accessCount": 3,
+      "lastAccessed": 1780795404059,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_agents_base.py",
+      "accessCount": 3,
+      "lastAccessed": 1780796254469,
+      "type": "file"
+    },
+    {
+      "path": "pyproject.toml",
+      "accessCount": 3,
+      "lastAccessed": 1780807855607,
+      "type": "file"
+    },
+    {
+      "path": "macr/__init__.py",
+      "accessCount": 3,
+      "lastAccessed": 1780843483968,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-06-06-macr-v0-docs-design.md",
+      "accessCount": 2,
+      "lastAccessed": 1780758802181,
+      "type": "file"
+    },
+    {
+      "path": "examples/coding_agent_orchestrator/README.md",
+      "accessCount": 2,
+      "lastAccessed": 1780759183085,
+      "type": "file"
+    },
+    {
+      "path": "examples/farmland_decision_system/README.md",
+      "accessCount": 2,
+      "lastAccessed": 1780759183469,
+      "type": "file"
+    },
+    {
+      "path": "examples/manuscript_agent_system/README.md",
+      "accessCount": 2,
+      "lastAccessed": 1780759183760,
+      "type": "file"
+    },
+    {
+      "path": "docs/agent_roles.md",
+      "accessCount": 2,
+      "lastAccessed": 1780759330371,
+      "type": "file"
+    },
+    {
+      "path": "docs/workflow_templates.md",
+      "accessCount": 2,
+      "lastAccessed": 1780759409360,
+      "type": "file"
+    },
+    {
+      "path": "docs/architecture.md",
+      "accessCount": 2,
+      "lastAccessed": 1780759498990,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-06-06-macr-v0-docs.md",
+      "accessCount": 2,
+      "lastAccessed": 1780759696473,
+      "type": "file"
+    },
+    {
+      "path": "macr/llm.py",
+      "accessCount": 2,
+      "lastAccessed": 1780763053787,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_agent.py",
+      "accessCount": 2,
+      "lastAccessed": 1780763068020,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_llm.py",
+      "accessCount": 2,
+      "lastAccessed": 1780763068296,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_roles.py",
+      "accessCount": 2,
+      "lastAccessed": 1780763069314,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_schemas.py",
+      "accessCount": 2,
+      "lastAccessed": 1780763070224,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_utils.py",
+      "accessCount": 2,
+      "lastAccessed": 1780763070703,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_smoke.py",
+      "accessCount": 2,
+      "lastAccessed": 1780763071078,
+      "type": "file"
+    },
+    {
+      "path": "scripts/smoke.py",
+      "accessCount": 2,
+      "lastAccessed": 1780763085400,
+      "type": "file"
+    },
+    {
+      "path": "macr/testrunner.py",
+      "accessCount": 2,
+      "lastAccessed": 1780795961168,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-06-06-macr-v1-cli-mvp.md",
+      "accessCount": 1,
+      "lastAccessed": 1780761169665,
+      "type": "file"
+    },
+    {
+      "path": "tests/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1780761278929,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_schemas_collab.py",
+      "accessCount": 1,
+      "lastAccessed": 1780794645521,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_worktree.py",
+      "accessCount": 1,
+      "lastAccessed": 1780794822571,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_testrunner.py",
+      "accessCount": 1,
+      "lastAccessed": 1780794914459,
+      "type": "file"
+    },
+    {
+      "path": "macr/agents/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1780795074202,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_collab_roles.py",
+      "accessCount": 1,
+      "lastAccessed": 1780795169216,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

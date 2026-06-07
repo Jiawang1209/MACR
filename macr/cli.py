@@ -7,44 +7,97 @@ import shutil
 import sys
 from pathlib import Path
 
-from macr.human_gate import collab_human_gate, interactive_human_gate
+from macr.human_gate import (
+    auto_approve_gate,
+    collab_human_gate,
+    consensus_human_gate,
+    interactive_human_gate,
+)
 from macr.llm import LLMError
 from macr.orchestrator import run_task
 
+# Console gates that read stdin; under a non-TTY they would hit EOF.
+_INTERACTIVE_GATES = (interactive_human_gate, collab_human_gate, consensus_human_gate)
+
+
+def _resolve_gate(args, injected, interactive_default):
+    """Pick a human gate: an injected gate wins, else --yes → auto-approve, else the default."""
+    if injected is not None:
+        return injected
+    if getattr(args, "yes", False):
+        return auto_approve_gate
+    return interactive_default
+
+
+def _non_tty_gate_guard(*gates) -> int | None:
+    """Non-TTY + a stdin-reading gate → clear error and exit code 2; otherwise None.
+
+    Prevents a raw `EOFError` deep in the run by failing fast with a `--yes` hint.
+    """
+    if sys.stdout.isatty():
+        return None
+    if any(g in _INTERACTIVE_GATES for g in gates):
+        print("error: 非交互环境(非 TTY)下运行需要 --yes 自动通过人工门;"
+              "否则人工门会因无法读取 stdin 而失败。", file=sys.stderr)
+        return 2
+    return None
+
+
+def _print_artifacts(runs_dir: Path, state) -> None:
+    """Tell the user where this run's artifacts landed (.macr/runs/<run_id>/)."""
+    run_id = getattr(state, "run_id", None)
+    if run_id:
+        print(f"产物 / artifacts: {runs_dir / run_id}/")
+
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
+    from macr import __version__
+
     parser = argparse.ArgumentParser(prog="macr", description="MACR multi-agent CLI")
+    parser.add_argument("--version", action="version", version=f"macr {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     run_p = sub.add_parser("run", help="run one MACR task end-to-end (single-model API path)")
     run_p.add_argument("task", help="the task description")
-    run_p.add_argument("--max-revisions", type=int, default=2)
-    run_p.add_argument("--model", default="claude-sonnet-4-6")
+    run_p.add_argument("--max-revisions", type=int, default=2,
+                       help="max executor→review→eval revisions before the gate (default: 2)")
+    run_p.add_argument("--model", default="claude-sonnet-4-6",
+                       help="Anthropic model id (default: claude-sonnet-4-6)")
+    run_p.add_argument("--yes", action="store_true",
+                       help="无人值守:自动通过人工门(不读 stdin)")
 
     collab_p = sub.add_parser("collab", help="Claude+Codex heterogeneous code collaboration (CLI-only)")
     collab_p.add_argument("task", help="the task description")
     collab_p.add_argument("--repo", required=True, help="path to the target git repository")
     collab_p.add_argument("--test-cmd", required=True, help="test command, e.g. 'pytest -q'")
-    collab_p.add_argument("--max-revisions", type=int, default=2)
-    collab_p.add_argument("--claude-model", default=None)
-    collab_p.add_argument("--codex-model", default=None)
-    collab_p.add_argument("--timeout", type=int, default=1800)
+    collab_p.add_argument("--max-revisions", type=int, default=2,
+                          help="max implementation revisions before the gate (default: 2)")
+    collab_p.add_argument("--claude-model", default=None, help="claude CLI model id (default: CLI default)")
+    collab_p.add_argument("--codex-model", default=None, help="codex CLI model id (default: CLI default)")
+    collab_p.add_argument("--timeout", type=int, default=1800,
+                          help="per-agent subprocess timeout in seconds (default: 1800)")
     collab_p.add_argument("--no-subagents", action="store_true",
                           help="disable native subagents in Claude/Codex")
+    collab_p.add_argument("--yes", action="store_true",
+                          help="无人值守:自动通过人工门(不读 stdin)")
 
     discuss_p = sub.add_parser("discuss", help="Claude+Codex discuss to consensus, then implement (CLI-only)")
     discuss_p.add_argument("task", help="the topic")
-    discuss_p.add_argument("--repo", required=True)
-    discuss_p.add_argument("--test-cmd", required=True)
-    discuss_p.add_argument("--max-rounds", type=int, default=3)
-    discuss_p.add_argument("--max-revisions", type=int, default=2)
+    discuss_p.add_argument("--repo", required=True, help="path to the target git repository")
+    discuss_p.add_argument("--test-cmd", required=True, help="test command, e.g. 'pytest -q'")
+    discuss_p.add_argument("--max-rounds", type=int, default=3,
+                           help="max discussion rounds before consensus (default: 3)")
+    discuss_p.add_argument("--max-revisions", type=int, default=2,
+                           help="max implementation revisions before the gate (default: 2)")
     discuss_p.add_argument("--max-plan-revisions", type=int, default=1,
                            help="共识后计划审查的最大修订次数(0=只审一次不修订)")
-    discuss_p.add_argument("--claude-model", default=None)
-    discuss_p.add_argument("--codex-model", default=None)
-    discuss_p.add_argument("--timeout", type=int, default=1800)
+    discuss_p.add_argument("--claude-model", default=None, help="claude CLI model id (default: CLI default)")
+    discuss_p.add_argument("--codex-model", default=None, help="codex CLI model id (default: CLI default)")
+    discuss_p.add_argument("--timeout", type=int, default=1800,
+                           help="per-agent subprocess timeout in seconds (default: 1800)")
     discuss_p.add_argument("--auto", action="store_true", help="skip round-boundary pauses")
-    discuss_p.add_argument("--no-subagents", action="store_true")
+    discuss_p.add_argument("--no-subagents", action="store_true",
+                           help="disable native subagents in Claude/Codex")
     discuss_p.add_argument("--tui", action="store_true", help="rich two-pane live view (needs a real terminal)")
     discuss_p.add_argument("--yes", action="store_true",
                            help="无人值守:自动通过共识门与最终人工门(不读 stdin)")
@@ -59,7 +112,7 @@ def _run_command(args, *, llm, human_gate) -> int:
         from macr.llm import AnthropicLLM
 
         llm = AnthropicLLM(model=args.model)
-    runs_dir = Path(".macr/runs")
+    runs_dir = Path(".macr/runs").resolve()
     try:
         state = run_task(args.task, llm, runs_dir, max_revisions=args.max_revisions, human_gate=human_gate)
     except LLMError as exc:
@@ -68,6 +121,7 @@ def _run_command(args, *, llm, human_gate) -> int:
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    _print_artifacts(runs_dir, state)
     return 0 if state.human_feedback and state.human_feedback.decision == "approve" else 1
 
 
@@ -89,6 +143,7 @@ def _collab_command(args, *, claude_backend, codex_backend, human_gate) -> int:
             codex_backend = CodexCliBackend(
                 model=args.codex_model, timeout=args.timeout, enable_subagents=enable)
 
+    runs_dir = Path(".macr/runs").resolve()
     try:
         state = run_collab(
             args.task,
@@ -96,7 +151,7 @@ def _collab_command(args, *, claude_backend, codex_backend, human_gate) -> int:
             test_cmd=shlex.split(args.test_cmd),
             claude_backend=claude_backend,
             codex_backend=codex_backend,
-            runs_dir=Path(".macr/runs").resolve(),
+            runs_dir=runs_dir,
             worktrees_dir=Path(".macr/worktrees").resolve(),
             max_revisions=args.max_revisions,
             human_gate=human_gate,
@@ -105,6 +160,7 @@ def _collab_command(args, *, claude_backend, codex_backend, human_gate) -> int:
     except Exception as exc:  # noqa: BLE001 - surface any failure as non-zero
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    _print_artifacts(runs_dir, state)
     return 0 if state.human_feedback and state.human_feedback.decision == "approve" else 1
 
 
@@ -146,27 +202,17 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
             discussion_control = view.control
         else:
             discussion_control = interactive_discussion_control
-    from macr.human_gate import auto_approve_gate, consensus_human_gate
-    auto_gate = getattr(args, "yes", False)
-    if consensus_gate is None:
-        if auto_gate:
-            consensus_gate = auto_approve_gate
-        else:
-            consensus_gate = view.consensus_gate if tui_active else consensus_human_gate
-    if human_gate is None:
-        if auto_gate:
-            human_gate = auto_approve_gate
-        else:
-            human_gate = view.final_gate if tui_active else collab_human_gate
+    default_consensus = view.consensus_gate if tui_active else consensus_human_gate
+    default_final = view.final_gate if tui_active else collab_human_gate
+    consensus_gate = _resolve_gate(args, consensus_gate, default_consensus)
+    human_gate = _resolve_gate(args, human_gate, default_final)
 
-    # 非 TTY 且未给 --yes 且门为交互式 console 门 → 会因读不到 stdin 而 EOF;提前清晰报错。
-    if not sys.stdout.isatty() and not auto_gate and (
-        consensus_gate is consensus_human_gate or human_gate is collab_human_gate
-    ):
-        print("error: 非交互环境(非 TTY)下运行 discuss 需要 --yes 自动通过人工门;"
-              "否则人工门会因无法读取 stdin 而失败。", file=sys.stderr)
-        return 2
+    # 非 TTY 且门为交互式 console 门(读不到 stdin → EOF)→ 提前清晰报错。
+    guard = _non_tty_gate_guard(consensus_gate, human_gate)
+    if guard is not None:
+        return guard
 
+    runs_dir = Path(".macr/runs").resolve()
     try:
         with view:
             state = run_discuss(
@@ -174,7 +220,7 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
                 repo=Path(args.repo).resolve(),
                 test_cmd=shlex.split(args.test_cmd),
                 claude_backend=claude_backend, codex_backend=codex_backend, impl_codex_backend=impl_codex_backend,
-                runs_dir=Path(".macr/runs").resolve(), worktrees_dir=Path(".macr/worktrees").resolve(),
+                runs_dir=runs_dir, worktrees_dir=Path(".macr/worktrees").resolve(),
                 max_rounds=args.max_rounds, max_revisions=args.max_revisions,
                 max_plan_revisions=args.max_plan_revisions,
                 discussion_control=discussion_control, consensus_gate=consensus_gate, human_gate=human_gate,
@@ -183,6 +229,7 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    _print_artifacts(runs_dir, state)
     return 0 if state.human_feedback and state.human_feedback.decision == "approve" else 1
 
 
@@ -191,7 +238,10 @@ def main(argv: list[str] | None = None, *, llm=None,
          human_gate=None, discussion_control=None, consensus_gate=None, view=None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     if args.command == "collab":
-        gate = human_gate or collab_human_gate
+        gate = _resolve_gate(args, human_gate, collab_human_gate)
+        guard = _non_tty_gate_guard(gate)
+        if guard is not None:
+            return guard
         return _collab_command(args, claude_backend=claude_backend, codex_backend=codex_backend, human_gate=gate)
     if args.command == "discuss":
         return _discuss_command(
@@ -199,7 +249,10 @@ def main(argv: list[str] | None = None, *, llm=None,
             impl_codex_backend=impl_codex_backend,
             discussion_control=discussion_control, consensus_gate=consensus_gate,
             human_gate=human_gate, view=view)
-    gate = human_gate or interactive_human_gate
+    gate = _resolve_gate(args, human_gate, interactive_human_gate)
+    guard = _non_tty_gate_guard(gate)
+    if guard is not None:
+        return guard
     return _run_command(args, llm=llm, human_gate=gate)
 
 
