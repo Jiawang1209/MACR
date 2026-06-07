@@ -57,3 +57,21 @@ def collab_human_gate(
     printer(diff)
     printer(f"\n--- Tests: passed={tr.get('passed')} exit={tr.get('exit_code')} ---")
     return _prompt_decision(input_fn, printer, ts)
+
+
+def consensus_human_gate(
+    state: SharedState,
+    *,
+    input_fn: Callable[[str], str] = input,
+    printer: Callable[..., None] = print,
+    timestamp: str | None = None,
+) -> HumanFeedback:
+    ts = timestamp or now_iso()
+    c = state.consensus or {}
+    steps = "\n".join(f"  {i}. {s}" for i, s in enumerate(c.get("steps", []), 1))
+    printer("\n===== Human Gate (consensus) =====")
+    printer(f"Topic: {state.topic}")
+    printer(f"\n--- Consensus ---\n{c.get('summary', '')}\n{steps}")
+    if c.get("open_questions"):
+        printer("Open questions: " + "; ".join(c.get("open_questions", [])))
+    return _prompt_decision(input_fn, printer, ts)
