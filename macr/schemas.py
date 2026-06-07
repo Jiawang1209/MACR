@@ -76,6 +76,12 @@ class TestResult(BaseModel):
     timed_out: bool = False
 
 
+class SubagentRecord(BaseModel):
+    source: Literal["claude", "codex"]
+    agent_type: str = "unknown"
+    ref: str = ""
+
+
 # --- Envelope + shared state ---
 
 class Message(BaseModel):
@@ -107,3 +113,4 @@ class SharedState(BaseModel):
     worktree_path: str | None = None
     diffs: list[str] = Field(default_factory=list)
     test_results: list[dict] = Field(default_factory=list)
+    subagents: list[dict] = Field(default_factory=list)
