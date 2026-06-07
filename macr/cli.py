@@ -31,6 +31,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     collab_p.add_argument("--timeout", type=int, default=1800)
     collab_p.add_argument("--no-subagents", action="store_true",
                           help="disable native subagents in Claude/Codex")
+
+    discuss_p = sub.add_parser("discuss", help="Claude+Codex discuss to consensus, then implement (CLI-only)")
+    discuss_p.add_argument("task", help="the topic")
+    discuss_p.add_argument("--repo", required=True)
+    discuss_p.add_argument("--test-cmd", required=True)
+    discuss_p.add_argument("--max-rounds", type=int, default=3)
+    discuss_p.add_argument("--max-revisions", type=int, default=2)
+    discuss_p.add_argument("--claude-model", default=None)
+    discuss_p.add_argument("--codex-model", default=None)
+    discuss_p.add_argument("--timeout", type=int, default=1800)
+    discuss_p.add_argument("--auto", action="store_true", help="skip round-boundary pauses")
+    discuss_p.add_argument("--no-subagents", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -91,13 +103,63 @@ def _collab_command(args, *, claude_backend, codex_backend, human_gate) -> int:
     return 0 if state.human_feedback and state.human_feedback.decision == "approve" else 1
 
 
+def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
+                     discussion_control, consensus_gate, human_gate) -> int:
+    from macr.discussion import run_discuss
+    from macr.discussion_control import auto_discussion_control, interactive_discussion_control
+
+    if claude_backend is None or codex_backend is None or impl_codex_backend is None:
+        missing = [b for b in ("claude", "codex") if shutil.which(b) is None]
+        if missing:
+            print(f"error: required CLI not found on PATH: {', '.join(missing)}", file=sys.stderr)
+            return 2
+        from macr.agents.cli_backend import ClaudeCliBackend, CodexCliBackend
+
+        enable = not getattr(args, "no_subagents", False)
+        if claude_backend is None:
+            claude_backend = ClaudeCliBackend(model=args.claude_model, timeout=args.timeout, enable_subagents=enable)
+        if codex_backend is None:
+            codex_backend = CodexCliBackend(model=args.codex_model, timeout=args.timeout,
+                                            enable_subagents=enable, sandbox="read-only")
+        if impl_codex_backend is None:
+            impl_codex_backend = CodexCliBackend(model=args.codex_model, timeout=args.timeout,
+                                                 enable_subagents=enable, sandbox="workspace-write")
+
+    if discussion_control is None:
+        discussion_control = auto_discussion_control if args.auto else interactive_discussion_control
+
+    try:
+        state = run_discuss(
+            args.task,
+            repo=Path(args.repo).resolve(),
+            test_cmd=shlex.split(args.test_cmd),
+            claude_backend=claude_backend, codex_backend=codex_backend, impl_codex_backend=impl_codex_backend,
+            runs_dir=Path(".macr/runs").resolve(), worktrees_dir=Path(".macr/worktrees").resolve(),
+            max_rounds=args.max_rounds, max_revisions=args.max_revisions,
+            discussion_control=discussion_control, consensus_gate=consensus_gate, human_gate=human_gate,
+            timeout=args.timeout,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return 0 if state.human_feedback and state.human_feedback.decision == "approve" else 1
+
+
 def main(argv: list[str] | None = None, *, llm=None,
-         claude_backend=None, codex_backend=None,
-         human_gate=None) -> int:
+         claude_backend=None, codex_backend=None, impl_codex_backend=None,
+         human_gate=None, discussion_control=None, consensus_gate=None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     if args.command == "collab":
         gate = human_gate or collab_human_gate
         return _collab_command(args, claude_backend=claude_backend, codex_backend=codex_backend, human_gate=gate)
+    if args.command == "discuss":
+        from macr.human_gate import consensus_human_gate
+        return _discuss_command(
+            args, claude_backend=claude_backend, codex_backend=codex_backend,
+            impl_codex_backend=impl_codex_backend,
+            discussion_control=discussion_control,
+            consensus_gate=consensus_gate or consensus_human_gate,
+            human_gate=human_gate or collab_human_gate)
     gate = human_gate or interactive_human_gate
     return _run_command(args, llm=llm, human_gate=gate)
 
