@@ -178,3 +178,14 @@ export ANTHROPIC_API_KEY=sk-...
 ### 嵌套 subagent (Stage B) / Nested subagents
 
 `macr collab` 默认允许 Claude(`Agent` 工具)与 Codex(`multi_agent`)使用各自的**原生 subagent**;用 `--no-subagents` 关闭。每个角色调用的原始事件流与 subagent 摘要落在 `.macr/runs/<run_id>/subagents/`。解析器为防御式,真实事件 schema 校准见 `docs/superpowers/STAGE_B_CALIBRATION.md`。
+
+### 讨论到共识 (Stage C1) / Discuss-to-consensus
+
+`macr discuss` 让 Claude 与 Codex 各自从主题出计划、多轮讨论、Claude 汇总共识,**你可在每轮边界插话**(成为讨论第三方),确认共识后接入实现闭环。
+
+```bash
+.venv/bin/macr discuss "为模块加一个 hello() 函数" --repo /path/to/repo --test-cmd "pytest -q"
+# 每轮后:[c]继续 / [i]插话 / [e]提前定稿 / [a]中止;--auto 跳过暂停
+```
+
+产物在 `.macr/runs/<run_id>/`:`discussion/`(双计划、各轮 JSON、人插话、`transcript.md`)、`consensus.md`,随后是实现阶段的 diff/test/review/final。讨论步两个 agent 只读 worktree,仅实现步 Codex 可写。
