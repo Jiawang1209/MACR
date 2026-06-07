@@ -14,8 +14,8 @@
 - Stage D:`discuss` 共识后插入 Codex 计划审查门(独立审查 + 确定性评估 + 限次修订,耗尽升人工门)。
 
 #### V1 待办(真机 dogfood 发现,详见 [`dogfood-2026-06-07-v1-real-cli.md`](dogfood-2026-06-07-v1-real-cli.md))
-- [ ] **错误透传**(发现 7):后端非零退出时,`AgentError` 应优先从 `--json` 流里提取真实错误(如 `turn.failed` / usage limit),而非只透传 stderr——避免真因被无害的 stderr 信息行掩盖。
-- [ ] **headless 自动门**(发现 3):提供无人值守过人工门的机制(如 `--yes`,或让 `--auto` 同时自动 approve 共识门/最终门),不依赖管道 stdin(`codex exec` 会把管道 stdin 当 `<stdin>` 块追加进 prompt)。
+- [x] **错误透传**(发现 7):后端非零退出时 `AgentError` 优先从 `--json` 流提取真因(`stream_error`),stderr 兜底。
+- [x] **headless 自动门**(发现 3):`discuss --yes` 自动过共识门/最终门(`auto_approve_gate`),不读 stdin;非 TTY 无 `--yes` 时清晰报错。`--auto` 仅管讨论轮次。
 - [ ] **codex executor 完整闭环验证**:codex 配额恢复后用 `/tmp/dogfood.sh` 重跑,确认真写文件 → 测试转绿 → 最终 approve。
 
 ### V2:Web 控制台
