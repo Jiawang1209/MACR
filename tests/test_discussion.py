@@ -278,3 +278,28 @@ def test_plan_review_reviewer_error_is_blocked(tmp_path):
     plan_decisions = [d for d in state.decisions if d.get("stage") == "plan_review"]
     assert plan_decisions[-1]["decision"] == "BLOCKED"
     assert state.human_feedback is not None  # gracefully reached the gates
+
+
+def test_run_discuss_accepts_injected_run_id(tmp_path):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    from macr.discussion import run_discuss
+    claude = FakeAgentBackend({
+        "discuss_planner": [_plan("c")], "discuss_turn": [_turn("c1")],
+        "consensus": [_consensus()], "reviewer": [{"summary": "ok", "findings": [], "decision": "approve"}],
+    })
+    codex_discuss = FakeAgentBackend({
+        "discuss_planner": [_plan("x")], "discuss_turn": [_turn("x1")],
+        "discuss_reviewer": [{"summary": "ok", "findings": [], "decision": "approve"}],
+    })
+    codex_impl = FakeAgentBackend({"executor": [{"artifact": "done", "notes": "", "evidence": []}]}, on_run=_editor)
+    state = run_discuss(
+        "topic", repo=repo, test_cmd=["true"],
+        claude_backend=claude, codex_backend=codex_discuss, impl_codex_backend=codex_impl,
+        runs_dir=tmp_path / "runs", worktrees_dir=tmp_path / "wts",
+        max_rounds=1, consensus_gate=_approve, human_gate=_approve,
+        discussion_control=lambda s, r, **kw: ControlDecision("end"),
+        view=SilentView(), run_id="CUSTOM_ID2",
+    )
+    assert state.run_id == "CUSTOM_ID2"
+    assert (tmp_path / "runs" / "CUSTOM_ID2" / "state.json").exists()

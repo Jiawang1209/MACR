@@ -128,8 +128,9 @@ def run_collab(
     printer: Callable[..., None] = print,
     today: str | None = None,
     timeout: int = 1800,
+    run_id: str | None = None,
 ) -> SharedState:
-    run_id = next_run_id(runs_dir, today=today)
+    run_id = run_id or next_run_id(runs_dir, today=today)
     run_path = runs_dir / run_id
     log = RunLog(run_path)
     state = SharedState(run_id=run_id, user_query=task, target_repo=str(repo))

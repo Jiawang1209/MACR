@@ -137,9 +137,10 @@ def run_discuss(
     view: DiscussionView | None = None,
     today: str | None = None,
     timeout: int = 1800,
+    run_id: str | None = None,
 ) -> SharedState:
     view = view or ConsoleView()
-    run_id = next_run_id(runs_dir, today=today)
+    run_id = run_id or next_run_id(runs_dir, today=today)
     run_path = runs_dir / run_id
     log = RunLog(run_path)
     state = SharedState(run_id=run_id, user_query=topic, topic=topic, target_repo=str(repo))

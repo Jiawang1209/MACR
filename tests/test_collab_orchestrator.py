@@ -159,3 +159,18 @@ def test_agent_error_routes_to_blocked_gate_and_persists(tmp_path):
     run_path = tmp_path / "runs" / "R20260607_001"
     assert (run_path / "evaluator.output.json").exists()  # BLOCKED decision landed on disk
     assert (run_path / "state.json").exists()
+
+
+def test_run_collab_accepts_injected_run_id(tmp_path):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    from macr.collab_orchestrator import run_collab
+    state = run_collab(
+        "do the task", repo=repo, test_cmd=["true"],
+        claude_backend=FakeAgentBackend({"planner": [_plan()], "reviewer": [_review("approve")]}),
+        codex_backend=FakeAgentBackend({"executor": [_exec(1)]}, on_run=_editor),
+        runs_dir=tmp_path / "runs", worktrees_dir=tmp_path / "wts",
+        human_gate=_approve, printer=lambda *_: None, run_id="CUSTOM_ID",
+    )
+    assert state.run_id == "CUSTOM_ID"
+    assert (tmp_path / "runs" / "CUSTOM_ID" / "state.json").exists()
