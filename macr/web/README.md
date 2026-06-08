@@ -13,3 +13,9 @@ macr web --runs-dir .macr/runs --port 8000
 ```
 
 Dev mode (hot reload): `cd frontend && npm run dev` (proxies /api to :8000).
+
+## Live driving (sub-project 2)
+
+`+ New run` in the UI (`/launch`) starts a collab/discuss run; `/live` streams its
+progress over a WebSocket and prompts for the human gates (approve / reject / annotate)
+in the browser. One live run at a time. Requires the `claude` + `codex` CLIs on PATH.
