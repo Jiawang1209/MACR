@@ -68,3 +68,37 @@ class RunSession:
     def respond_gate(self, decision: str, feedback: str = "") -> None:
         self._gate_response = HumanFeedback(decision=decision, feedback=feedback, timestamp=now_iso())
         self._gate_event.set()
+
+
+class RunManager:
+    """Holds the single active RunSession. `runner(session, **kwargs)` starts the
+    background run (injected for tests; defaults to the real thread runner).
+    """
+
+    def __init__(self, runner: Callable[..., None] | None = None):
+        self._runner = runner
+        self._active: RunSession | None = None
+        self._lock = threading.Lock()
+        self._counter = 0
+
+    @property
+    def active(self) -> RunSession | None:
+        return self._active
+
+    def launch(self, *, command: str, task: str, repo: str, test_cmd, options: dict) -> RunSession:
+        with self._lock:
+            if self._active is not None and self._active.status in ("running", "awaiting_gate"):
+                raise RunActive("a live run is already active")
+            self._counter += 1
+            run_id = f"live-{self._counter}"  # replaced by the real runner with a real run_id
+            session = RunSession(run_id=run_id, command=command)
+            self._active = session
+        runner = self._runner
+        if runner is None:
+            from macr.web.live import start_live_run as runner  # default real runner
+        runner(session, command=command, task=task, repo=repo, test_cmd=test_cmd, options=options)
+        return session
+
+    def respond_gate(self, decision: str, feedback: str = "") -> None:
+        if self._active is not None:
+            self._active.respond_gate(decision, feedback)

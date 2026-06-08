@@ -1,6 +1,7 @@
 import threading
 
-from macr.web.session import RunSession
+from macr.web.session import RunActive, RunManager, RunSession
+import pytest
 
 
 def test_emit_buffers_events_and_tracks_status():
@@ -53,3 +54,33 @@ def test_gate_bridge_blocks_until_response():
     t.join(timeout=2.0)
     assert result == {"decision": "approve", "feedback": "looks good"}
     assert s.status == "running"
+
+
+def test_manager_launch_starts_session_via_injected_runner():
+    started = {}
+
+    def fake_runner(session, **kwargs):
+        started["run_id"] = session.run_id
+        started["kwargs"] = kwargs
+
+    mgr = RunManager(runner=fake_runner)
+    sess = mgr.launch(command="collab", task="do it", repo="/r", test_cmd=["true"], options={})
+    assert mgr.active is sess
+    assert started["run_id"] == sess.run_id
+    assert started["kwargs"]["command"] == "collab"
+    assert started["kwargs"]["task"] == "do it"
+
+
+def test_manager_rejects_second_launch_while_active():
+    mgr = RunManager(runner=lambda session, **kw: None)
+    mgr.launch(command="collab", task="t", repo="/r", test_cmd=["true"], options={})
+    with pytest.raises(RunActive):
+        mgr.launch(command="discuss", task="t2", repo="/r", test_cmd=["true"], options={})
+
+
+def test_manager_allows_new_launch_after_active_finishes():
+    mgr = RunManager(runner=lambda session, **kw: None)
+    s1 = mgr.launch(command="collab", task="t", repo="/r", test_cmd=["true"], options={})
+    s1.emit({"type": "status", "status": "done"})
+    s2 = mgr.launch(command="collab", task="t2", repo="/r", test_cmd=["true"], options={})
+    assert mgr.active is s2 and s2 is not s1
