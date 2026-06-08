@@ -79,3 +79,46 @@ def test_no_spa_mount_when_dist_absent(tmp_path):
     # create_app must not crash when no built SPA is present
     app = create_app(runs_dir=tmp_path, spa_dist=tmp_path / "missing")
     assert TestClient(app).get("/api/runs").status_code == 200
+
+
+from macr.web.session import RunManager
+
+
+def test_launch_starts_run_and_active_reports_it(tmp_path):
+    mgr = RunManager(runner=lambda session, **kw: session.emit({"type": "note", "text": "started"}))
+    app = create_app(runs_dir=tmp_path, manager=mgr)
+    c = TestClient(app)
+    repo = tmp_path / "repo"; repo.mkdir()
+    r = c.post("/api/runs/launch", json={"command": "collab", "task": "do it",
+                                         "repo": str(repo), "test_cmd": "true"})
+    assert r.status_code == 200 and r.json()["run_id"]
+    active = c.get("/api/runs/active")
+    assert active.status_code == 200 and active.json()["command"] == "collab"
+
+
+def test_launch_rejects_concurrent_with_409(tmp_path):
+    mgr = RunManager(runner=lambda session, **kw: None)
+    app = create_app(runs_dir=tmp_path, manager=mgr)
+    c = TestClient(app)
+    repo = tmp_path / "repo"; repo.mkdir()
+    body = {"command": "collab", "task": "t", "repo": str(repo), "test_cmd": "true"}
+    assert c.post("/api/runs/launch", json=body).status_code == 200
+    assert c.post("/api/runs/launch", json=body).status_code == 409
+
+
+def test_launch_validates_inputs_with_400(tmp_path):
+    mgr = RunManager(runner=lambda session, **kw: None)
+    app = create_app(runs_dir=tmp_path, manager=mgr)
+    c = TestClient(app)
+    r = c.post("/api/runs/launch", json={"command": "collab", "task": "t",
+                                         "repo": str(tmp_path / "nope"), "test_cmd": "true"})
+    assert r.status_code == 400
+    repo = tmp_path / "repo"; repo.mkdir()
+    r2 = c.post("/api/runs/launch", json={"command": "collab", "task": "  ",
+                                          "repo": str(repo), "test_cmd": "true"})
+    assert r2.status_code == 400
+
+
+def test_active_returns_204_when_idle(tmp_path):
+    app = create_app(runs_dir=tmp_path, manager=RunManager(runner=lambda s, **k: None))
+    assert TestClient(app).get("/api/runs/active").status_code == 204
