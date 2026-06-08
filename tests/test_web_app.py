@@ -122,3 +122,55 @@ def test_launch_validates_inputs_with_400(tmp_path):
 def test_active_returns_204_when_idle(tmp_path):
     app = create_app(runs_dir=tmp_path, manager=RunManager(runner=lambda s, **k: None))
     assert TestClient(app).get("/api/runs/active").status_code == 204
+
+
+import subprocess
+from pathlib import Path as _Path
+
+from macr.agents.base import FakeAgentBackend
+from macr.web.live import start_run
+
+
+def _init_repo2(path):
+    path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    (path / "a.txt").write_text("hello\n")
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "i"],
+                   cwd=path, check=True)
+
+
+def test_websocket_streams_stages_gate_and_done(tmp_path):
+    repo = tmp_path / "repo"
+    _init_repo2(repo)
+
+    def _editor(role, state):
+        if role.name == "executor" and state.worktree_path:
+            (_Path(state.worktree_path) / "a.txt").write_text("edited\n")
+
+    def runner(session, **kw):
+        claude = FakeAgentBackend({"planner": [{"summary": "p", "steps": ["s"]}],
+                                   "reviewer": [{"summary": "ok", "findings": [], "decision": "approve"}]})
+        codex = FakeAgentBackend({"executor": [{"artifact": "d", "notes": "", "evidence": []}]}, on_run=_editor)
+        return start_run(session, command="collab", task="t", repo=str(repo), test_cmd=["true"],
+                         options={"runs_dir": tmp_path / "runs", "worktrees_dir": tmp_path / "wts",
+                                  "claude_backend": claude, "codex_backend": codex})
+
+    mgr = RunManager(runner=runner)
+    app = create_app(runs_dir=tmp_path, manager=mgr)
+    c = TestClient(app)
+    c.post("/api/runs/launch", json={"command": "collab", "task": "t", "repo": str(repo), "test_cmd": "true"})
+
+    decision = None
+    with c.websocket_connect("/api/runs/active/ws") as ws:
+        seen_gate = False
+        for _ in range(200):
+            ev = ws.receive_json()
+            if ev["type"] == "gate_request" and not seen_gate:
+                seen_gate = True
+                ws.send_json({"decision": "approve", "feedback": ""})
+            if ev["type"] == "done":
+                decision = ev["decision"]
+                break
+    assert seen_gate is True
+    assert decision == "approve"
