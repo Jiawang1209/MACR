@@ -59,3 +59,103 @@ class WebView:
 
     def printer(self, text: str) -> None:
         self._s.emit({"type": "note", "text": text})
+
+
+import threading
+from pathlib import Path
+
+from macr.schemas import HumanFeedback
+
+
+def _final_gate_data(state) -> dict:
+    diff = state.diffs[-1] if state.diffs else "(no diff)"
+    tr = state.test_results[-1] if state.test_results else {}
+    return {"worktree": state.worktree_path, "diff": diff,
+            "tests": {"passed": tr.get("passed"), "exit_code": tr.get("exit_code")}}
+
+
+def _consensus_gate_data(state) -> dict:
+    c = state.consensus or {}
+    review = state.reviews[-1] if state.reviews else {}
+    return {"summary": c.get("summary", ""), "steps": c.get("steps", []),
+            "open_questions": c.get("open_questions", []),
+            "plan_review_decision": review.get("decision")}
+
+
+def _make_gate(session: RunSession, gate: str, data_fn):
+    def gate_fn(state, *, printer=None) -> HumanFeedback:
+        return session.request_gate(gate, data_fn(state))
+    return gate_fn
+
+
+def start_run(session: RunSession, *, command: str, task: str, repo: str, test_cmd,
+              options: dict) -> threading.Thread:
+    """Spawn the orchestrator in a background thread with a WebView + web gates.
+
+    `options` carries runs_dir / worktrees_dir / backends / numeric limits. Tests pass
+    FakeAgentBackend(s); production passes real CLI backends (built by the caller).
+    """
+    runs_dir = Path(options.get("runs_dir", ".macr/runs"))
+    worktrees_dir = Path(options.get("worktrees_dir", ".macr/worktrees"))
+
+    def target() -> None:
+        view = WebView(session)
+        try:
+            if command == "collab":
+                from macr.collab_orchestrator import run_collab
+                state = run_collab(
+                    task, repo=Path(repo), test_cmd=test_cmd,
+                    claude_backend=options["claude_backend"], codex_backend=options["codex_backend"],
+                    runs_dir=runs_dir, worktrees_dir=worktrees_dir,
+                    max_revisions=options.get("max_revisions", 2),
+                    human_gate=_make_gate(session, "final", _final_gate_data),
+                    printer=view.printer, run_id=session.run_id,
+                    timeout=options.get("timeout", 1800))
+            else:
+                from macr.discussion import run_discuss
+                from macr.discussion_control import auto_discussion_control
+                state = run_discuss(
+                    task, repo=Path(repo), test_cmd=test_cmd,
+                    claude_backend=options["claude_backend"], codex_backend=options["codex_backend"],
+                    impl_codex_backend=options["impl_codex_backend"],
+                    runs_dir=runs_dir, worktrees_dir=worktrees_dir,
+                    max_rounds=options.get("max_rounds", 3),
+                    max_revisions=options.get("max_revisions", 2),
+                    max_plan_revisions=options.get("max_plan_revisions", 1),
+                    consensus_gate=_make_gate(session, "consensus", _consensus_gate_data),
+                    human_gate=_make_gate(session, "final", _final_gate_data),
+                    discussion_control=auto_discussion_control, view=view,
+                    run_id=session.run_id, timeout=options.get("timeout", 1800))
+            decision = state.human_feedback.decision if state.human_feedback else None
+            session.emit({"type": "status", "status": "done"})
+            session.emit({"type": "done", "run_id": session.run_id, "decision": decision})
+        except Exception as exc:  # noqa: BLE001 — surface any failure to the client
+            session.emit({"type": "status", "status": "error"})
+            session.emit({"type": "error", "message": str(exc)})
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    return thread
+
+
+def start_live_run(session: RunSession, *, command: str, task: str, repo: str, test_cmd,
+                   options: dict) -> threading.Thread:
+    """RunManager default runner: assigns a real run_id and builds real CLI backends."""
+    from macr.agents.cli_backend import ClaudeCliBackend, CodexCliBackend
+    from macr.utils import next_run_id
+
+    runs_dir = Path(options.get("runs_dir", ".macr/runs")).resolve()
+    session.run_id = next_run_id(runs_dir)
+    enable = not options.get("no_subagents", False)
+    timeout = options.get("timeout", 1800)
+    opts = dict(options)
+    opts["runs_dir"] = runs_dir
+    opts["worktrees_dir"] = Path(options.get("worktrees_dir", ".macr/worktrees")).resolve()
+    opts["claude_backend"] = ClaudeCliBackend(timeout=timeout, enable_subagents=enable)
+    if command == "collab":
+        opts["codex_backend"] = CodexCliBackend(timeout=timeout, enable_subagents=enable)
+    else:
+        opts["codex_backend"] = CodexCliBackend(timeout=timeout, enable_subagents=enable, sandbox="read-only")
+        opts["impl_codex_backend"] = CodexCliBackend(timeout=timeout, enable_subagents=enable,
+                                                     sandbox="workspace-write")
+    return start_run(session, command=command, task=task, repo=repo, test_cmd=test_cmd, options=opts)
