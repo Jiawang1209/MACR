@@ -4,7 +4,7 @@ MACR 让多个 AI Agent 像一个**有纪律的小组**那样协作完成复杂�
 
 A framework for **structured** multi-agent collaboration — independent proposals, debate-to-consensus, cross-review, gated execution, and an auditable trail — not "several AIs chatting freely".
 
-> **现状(一句话)**:已实现的是该框架在 **"软件开发协作"** 场景下的 **CLI MVP**。核心命令 `macr discuss` 能驱动 **Claude + Codex**:讨论出方案 → 独立审查方案 → 写代码 → 交叉审码 → 跑测试 → 人工门 → 把全过程落盘。详见 [现状与成熟度](#现状与成熟度--status)。
+> **现状(一句话)**:已实现的是该框架在 **"软件开发协作"** 场景下的 **CLI MVP + Web 控制台(V2)**。核心命令 `macr discuss` 能驱动 **Claude + Codex**:讨论出方案 → 独立审查方案 → 写代码 → 交叉审码 → 跑测试 → 人工门 → 把全过程落盘;`macr web` 起一个浏览器控制台,既能**回看**历史运行,也能**实况驱动**一次新运行(在浏览器里审批人工门)。详见 [现状与成熟度](#现状与成熟度--status)。
 
 ---
 
@@ -22,13 +22,14 @@ A framework for **structured** multi-agent collaboration — independent proposa
 
 ## 现在能做什么 / What it does today
 
-三条命令(`macr <command>`):
+四条命令(`macr <command>`):
 
 | 命令 | 做什么 | 依赖 |
 |---|---|---|
 | `run` | 单个模型(Anthropic API)跑 Planner→Executor→Reviewer→Evaluator 闭环 | `ANTHROPIC_API_KEY` |
 | `collab` | Claude+Codex 异构协作改代码(Claude 规划/审查,Codex 在隔离 worktree 执行) | `claude` + `codex` CLI |
 | **`discuss`** | **主线**:Claude+Codex 讨论到共识 → 计划审查门 → 实现 → 审码 → 测试 → 人工门 | `claude` + `codex` CLI |
+| `web` | 浏览器控制台:回看 `.macr/runs/` 历史运行,或从 `+ New run` 实况驱动一次 collab/discuss(WebSocket 流式 + 浏览器人工门) | `.[web]` 额外依赖;实况驱动需 `claude` + `codex` CLI |
 
 ### `macr discuss` 的完整闭环(旗舰)
 
@@ -107,6 +108,26 @@ Claude 出方案/审 diff,Codex 在 `.macr/worktrees/<run_id>/` 改代码,框架
 | `--timeout` | 单次 CLI 调用超时秒数(默认 1800) |
 
 > `--auto` 与 `--yes` 职责分离:`--auto` 管讨论是否自动推进;`--yes` 管人工门是否自动 approve。非交互环境(非 TTY)未给 `--yes` 时会清晰报错,而非卡在读 stdin。
+
+### web —— 浏览器控制台(V2,回看 + 实况驱动)
+
+```bash
+# 安装 web 额外依赖
+.venv/bin/pip install -e ".[web,dev]"
+
+# 一次性构建前端 SPA
+cd frontend && npm install && npm run build && cd ..
+
+# 起服务(同时托管 API 与 SPA),浏览器开 http://127.0.0.1:8000
+.venv/bin/macr web --runs-dir .macr/runs --port 8000
+```
+
+控制台两件事:
+
+- **回看(read-only viewer)**:浏览 `.macr/runs/` 下的历史运行 —— 阶段卡、共识、审查、diff、测试结果一屏看完。
+- **实况驱动(live driving)**:`+ New run`(`/launch`)启动一次 collab/discuss,`/live` 通过 WebSocket 流式回放并实时推进,**人工门直接在浏览器里 approve / reject / 留言**。同一时刻只跑一个实况运行,需 `claude` + `codex` 在 PATH 上。
+
+> 前端热重载开发:`cd frontend && npm run dev`(把 `/api` 代理到 `:8000`)。详见 [`macr/web/README.md`](macr/web/README.md)。
 
 ---
 
@@ -189,17 +210,19 @@ Claude 出方案/审 diff,Codex 在 `.macr/worktrees/<run_id>/` 改代码,框架
 | 结构化输出/校验 | pydantic v2 |
 | 单模型 API 路径(`run`) | anthropic SDK |
 | 异构协作(`collab`/`discuss`) | 直接驱动 `claude` / `codex` CLI(子进程 + JSONL 流解析) |
-| 实况视图 | rich |
+| 实况视图(CLI) | rich |
 | 隔离执行 | git worktree |
-| 测试 | pytest(184 通过) |
+| Web 后端(`web`) | FastAPI + uvicorn;实况驱动用 stdlib `threading`/`queue` + WebSocket |
+| Web 前端 | React 18 + TypeScript + Vite + react-router;Vitest 单测 |
+| 测试 | pytest(245 通过)+ Vitest(前端) |
 
-> V2+ 的 Web 控制台 / 数据库 / 队列等栈仍是**规划**,尚未引入,见 [Roadmap](#路线图--roadmap)。
+> 数据库 / 队列等栈仍是**规划**,尚未引入;当前 Web 控制台用文件系统(`.macr/runs/`)+ 内存单会话,见 [Roadmap](#路线图--roadmap)。
 
 ---
 
 ## 现状与成熟度 / Status
 
-- **测试**:184 个测试全绿,但均使用 fake 后端——验证的是逻辑正确性。
+- **测试**:245 个 Python 测试全绿(另有前端 Vitest),但均使用 fake 后端——验证的是逻辑正确性。
 - **真机 dogfood**(2026-06-07,首次用真实 claude+codex 端到端跑,详见 [`docs/dogfood-2026-06-07-v1-real-cli.md`](docs/dogfood-2026-06-07-v1-real-cli.md)):
   - ✅ Claude 侧健康(规划/共识真机正常)。
   - ✅ Stage D 计划审查门的优雅降级真机验证通过。
@@ -214,7 +237,7 @@ Claude 出方案/审 diff,Codex 在 `.macr/worktrees/<run_id>/` 改代码,框架
 
 - **V0** — 文档与协议 ✅
 - **V1** — CLI MVP(Stage A 异构协作 → B 嵌套 subagent → C1 讨论 → C2 双栏 TUI → D 计划审查门)✅(端到端真机验证进行中)
-- **V2** — Web 控制台(Next.js 前端,展示任务流与各 Agent 输出)
+- **V2** — Web 控制台 ✅:① 只读运行回看(`macr web` + React/Vite SPA);② 实况驱动(`/launch` 起跑、`/live` WebSocket 流式、浏览器人工门)。*(注:前端实际用 React + Vite,非早期设计里的 Next.js)*
 - **V3** — 插件化 Agent / Tool / Workflow 注册
 - **V4** — 领域应用衍生(编码编排、农田生态决策、科研论文辅助等)
 
@@ -225,6 +248,8 @@ Claude 出方案/审 diff,Codex 在 `.macr/worktrees/<run_id>/` 改代码,框架
 ## 目录导航 / Repo Layout
 
 - [`macr/`](macr/) — 框架与 CLI 实现
+- [`macr/web/`](macr/web/) — Web 控制台后端(FastAPI:运行回看 + 实况驱动),见 [`macr/web/README.md`](macr/web/README.md)
+- [`frontend/`](frontend/) — Web 控制台前端(React + TypeScript + Vite)
 - [`tests/`](tests/) — 测试
 - [`docs/architecture.md`](docs/architecture.md) — 架构、设计哲学、原则
 - [`docs/agent_roles.md`](docs/agent_roles.md) · [`docs/message_protocol.md`](docs/message_protocol.md) · [`docs/workflow_templates.md`](docs/workflow_templates.md)
