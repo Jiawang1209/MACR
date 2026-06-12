@@ -227,16 +227,16 @@ cd frontend && npm install && npm run build && cd ..
   - ✅ Claude 侧健康(规划/共识真机正常)。
   - ✅ Stage D 计划审查门的优雅降级真机验证通过。
   - ✅ 修复了 codex 集成的 2 个真机必挂 bug(无效 CLI flag、非 TTY stdin 继承);并改进了错误透传(从 `--json` 流取真因)。
-  - ⏳ **"讨论→写码→审码→测试转绿"完整闭环尚未首次真机跑通**(受 codex 账号配额所限,待重跑确认)。
+  - ✅ **"讨论→写码→审码→测试转绿"完整闭环真机跑通**(2026-06-07 22:13 codex 配额恢复后补跑,详见报告 [§5](docs/dogfood-2026-06-07-v1-real-cli.md)):codex 审查真判 **PASS** → codex executor 在 `workspace-write` 沙箱真写 `mymod.py` 的 `hello()` → `python check.py` `passed=True` → reviewer/evaluator `PASS` → 最终门 `approve`。异构 claude(规划/共识)+ codex(审查/executor)端到端真机闭环达成。
 
-简言之:核心闭环已实现、单测覆盖充分、真机基础坑已补,**差最后一步完整真机端到端验证**。
+简言之:核心闭环已实现、单测覆盖充分、真机端到端(含 codex executor)已在零依赖小靶子上验证过一次。**后续硬化方向**:在更大/更真实的靶子仓库上扩大真机覆盖(当前补跑用的 `/tmp` harness 为一次性,产物未入库),并随 `codex`/`claude` CLI 版本漂移补契约测试。
 
 ---
 
 ## 路线图 / Roadmap
 
 - **V0** — 文档与协议 ✅
-- **V1** — CLI MVP(Stage A 异构协作 → B 嵌套 subagent → C1 讨论 → C2 双栏 TUI → D 计划审查门)✅(端到端真机验证进行中)
+- **V1** — CLI MVP(Stage A 异构协作 → B 嵌套 subagent → C1 讨论 → C2 双栏 TUI → D 计划审查门)✅(含 codex executor 的端到端真机闭环已验证一次,2026-06-07)
 - **V2** — Web 控制台 ✅:① 只读运行回看(`macr web` + React/Vite SPA);② 实况驱动(`/launch` 起跑、`/live` WebSocket 流式、浏览器人工门)。*(注:前端实际用 React + Vite,非早期设计里的 Next.js)*
 - **V3** — 插件化 Agent / Tool / Workflow 注册
 - **V4** — 领域应用衍生(编码编排、农田生态决策、科研论文辅助等)
