@@ -8,3 +8,6 @@ dist/
 build/
 .omc/
 *.tsbuildinfo
+.DS_Store
+# 借鉴用的第三方源码快照,本地参考即可,不入库、不上传
+demo/
