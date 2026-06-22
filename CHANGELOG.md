@@ -28,11 +28,16 @@
 - 新增 Multi-Agent Term 架构设计 spec 与 Phase 0 TDD 计划(见上)。
 - 新增本 `CHANGELOG.md` 与开发指南 `AGENTS.md` / `CLAUDE.md`。
 
-### Planned(尚未实现,Phase 0)
-- [ ] `macr/runtime/agent_state.py` — `AgentState`/`parse_marker`/`detect`/`aggregate`。
-- [ ] `macr/runtime/tmux_control.py` — control mode 帧/事件解析 + 可注入传输。
-- [ ] `macr/runtime/tmux_runtime.py` — 一终端多 Agent pane 的 spawn/send/snapshot/list/kill。
-- [ ] `macr/runtime/observer.py` — 三路信号融合为 `Detection`。
+### Added — Phase 0:tmux 运行时 + OSC 7748 观测(`macr/runtime/`)
+依据 `specs/2026-06-22-multi-agent-term-design.md`、`plans/2026-06-22-mat-phase0-tmux-runtime.md`。
+18 个 runtime 测试绿(全用 `FakeTmuxTransport`,不依赖真 tmux/CLI);真机 tmux 冒烟脚本端到端跑通过一次。
+> commit 短 hash 待提交后补填(见 AGENTS.md 追溯约定)。
+
+- `agent_state.py` — `AgentState`/`AgentApp`/`Detection` + `parse_marker`(OSC 7748,conf 100)+ `detect`(屏幕启发式,70..92)+ `aggregate`(注意力优先级)。`(commit 待填)`
+- `tmux_control.py` — `TmuxTransport` Protocol + `Fake`/`Subprocess` 实现 + `TmuxControl`(`%begin/%end/%error` guard 帧 + `%`-事件解析)。`(commit 待填)`
+- `tmux_runtime.py` — `TmuxRuntime`:`open_session`/`spawn_agent`/`send_input`/`snapshot`/`list_agents`/`kill`/`agent_for_pane`,维护 `agent_id↔%pane`。`(commit 待填)`
+- `observer.py` — `AgentObserver`:OSC 标记 + 进程事实 + 屏幕启发式三路融合为 `Detection`,高可信覆盖低可信;进程退出为权威。`(commit 待填)`
+- `scripts/mat_tmux_smoke.py` + `macr/runtime/README.md` — 真机 tmux 手动冒烟 + 包说明。`(commit 待填)`
 
 ---
 

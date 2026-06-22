@@ -101,6 +101,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     collab_p.add_argument("--codex-model", default=None, help="codex CLI model id (default: CLI default)")
     collab_p.add_argument("--timeout", type=int, default=1800,
                           help="per-agent subprocess timeout in seconds (default: 1800)")
+    collab_p.add_argument("--worker-runtime", choices=("cli", "tmux"), default="cli",
+                          help="how the Worker runs: cli (one-shot codex, default) or tmux (observable pane)")
     collab_p.add_argument("--no-subagents", action="store_true",
                           help="disable native subagents in Claude/Codex")
     collab_p.add_argument("--yes", action="store_true",
@@ -121,6 +123,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     discuss_p.add_argument("--timeout", type=int, default=1800,
                            help="per-agent subprocess timeout in seconds (default: 1800)")
     discuss_p.add_argument("--auto", action="store_true", help="skip round-boundary pauses")
+    discuss_p.add_argument("--worker-runtime", choices=("cli", "tmux"), default="cli",
+                           help="how the Worker runs: cli (one-shot codex, default) or tmux (observable pane)")
     discuss_p.add_argument("--no-subagents", action="store_true",
                            help="disable native subagents in Claude/Codex")
     discuss_p.add_argument("--tui", action="store_true", help="rich two-pane live view (needs a real terminal)")
@@ -155,6 +159,27 @@ def _run_command(args, *, llm, human_gate) -> int:
     return 0 if state.human_feedback and state.human_feedback.decision == "approve" else 1
 
 
+def _build_worker_backend(args):
+    """Return a TmuxExecutorBackend when --worker-runtime tmux, else None
+    (default: orchestrator uses the one-shot codex backend). The tmux path needs
+    `tmux` on PATH; it is exercised by scripts/mat_tmux_smoke.py, not CI."""
+    if getattr(args, "worker_runtime", "cli") != "tmux":
+        return None
+    from macr.runtime.tmux_control import SubprocessTmuxTransport, TmuxControl
+    from macr.runtime.tmux_executor import TmuxExecutorBackend
+    from macr.runtime.tmux_runtime import TmuxRuntime
+
+    session = "macr-mat"
+    control = TmuxControl(SubprocessTmuxTransport(session=session))
+    control.poll(timeout=0.5)  # drain the attach banner
+    runtime = TmuxRuntime(control)
+    runtime._session = session  # reuse the session the transport already attached
+    enable = not getattr(args, "no_subagents", False)
+    return TmuxExecutorBackend(
+        runtime, model=args.codex_model, timeout=args.timeout,
+        enable_subagents=enable, sandbox="workspace-write")
+
+
 def _collab_command(args, *, claude_backend, codex_backend, human_gate) -> int:
     from macr.collab_orchestrator import run_collab
 
@@ -186,6 +211,7 @@ def _collab_command(args, *, claude_backend, codex_backend, human_gate) -> int:
             max_revisions=args.max_revisions,
             human_gate=human_gate,
             timeout=args.timeout,
+            worker_backend=_build_worker_backend(args),
         )
     except Exception as exc:  # noqa: BLE001 - surface any failure as non-zero
         print(f"error: {exc}", file=sys.stderr)
@@ -255,6 +281,7 @@ def _discuss_command(args, *, claude_backend, codex_backend, impl_codex_backend,
                 max_plan_revisions=args.max_plan_revisions,
                 discussion_control=discussion_control, consensus_gate=consensus_gate, human_gate=human_gate,
                 view=view, timeout=args.timeout,
+                worker_backend=_build_worker_backend(args),
             )
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)

@@ -174,3 +174,34 @@ def test_run_collab_accepts_injected_run_id(tmp_path):
     )
     assert state.run_id == "CUSTOM_ID"
     assert (tmp_path / "runs" / "CUSTOM_ID" / "state.json").exists()
+
+
+def test_run_collab_uses_injected_worker_backend(tmp_path):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    used = {"worker": False, "codex_executor": False}
+
+    class WorkerSpy(FakeAgentBackend):
+        def run_role(self, role, state, **kw):
+            if role.name == "executor":
+                used["worker"] = True
+            return super().run_role(role, state, **kw)
+
+    class CodexSpy(FakeAgentBackend):
+        def run_role(self, role, state, **kw):
+            if role.name == "executor":
+                used["codex_executor"] = True
+            return super().run_role(role, state, **kw)
+
+    worker = WorkerSpy({"executor": [_exec(1)]}, on_run=_editor)
+    codex = CodexSpy({"executor": [_exec(9)]}, on_run=_editor)
+    state = run_collab(
+        "do it", repo=repo, test_cmd=["true"],
+        claude_backend=FakeAgentBackend({"planner": [_plan()], "reviewer": [_review("approve")]}),
+        codex_backend=codex, worker_backend=worker,
+        runs_dir=tmp_path / "runs", worktrees_dir=tmp_path / "wts",
+        human_gate=_approve, printer=lambda *_: None,
+    )
+    assert used["worker"] is True            # Worker ran on the injected backend
+    assert used["codex_executor"] is False   # default codex backend NOT used for executor
+    assert state.agent_outputs["executor"][0]["artifact"] == "edited-1"

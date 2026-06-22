@@ -138,6 +138,7 @@ def run_discuss(
     today: str | None = None,
     timeout: int = 1800,
     run_id: str | None = None,
+    worker_backend: AgentBackend | None = None,
 ) -> SharedState:
     view = view or ConsoleView()
     run_id = run_id or next_run_id(runs_dir, today=today)
@@ -232,7 +233,8 @@ def run_discuss(
                     _implementation_loop(
                         state, run_path=run_path, log=log, worktree=worktree,
                         claude_backend=claude_backend, codex_backend=impl_codex_backend,
-                        test_cmd=test_cmd, max_revisions=max_revisions, timeout=timeout, printer=view.status)
+                        test_cmd=test_cmd, max_revisions=max_revisions, timeout=timeout, printer=view.status,
+                        worker_backend=worker_backend)
                     fb2 = human_gate(state, printer=view.note)
                     state.human_feedback = fb2
                     final_rejected = fb2.decision == "reject"

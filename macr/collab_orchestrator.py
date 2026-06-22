@@ -63,13 +63,19 @@ def _implementation_loop(
     max_revisions: int,
     timeout: int,
     printer: Callable[..., None],
+    worker_backend: AgentBackend | None = None,
 ) -> None:
-    """Shared executor→diff→test→review→eval revision loop (Stage A + Stage C)."""
+    """Shared executor→diff→test→review→eval revision loop (Stage A + Stage C).
+
+    The Worker (executor) runs on `worker_backend` when provided (e.g. the tmux
+    runtime backend), else `codex_backend` (the default one-shot CLI backend).
+    """
+    worker = worker_backend or codex_backend
     try:
         total_attempts = max_revisions + 1
         for attempt in range(1, total_attempts + 1):
             exec_sink = TraceSink(run_path / "subagents", f"executor.v{attempt}")
-            exec_msg = codex_backend.run_role(
+            exec_msg = worker.run_role(
                 EXECUTOR_C, state, run_id=state.run_id, task_id=state.run_id, trace=exec_sink)
             state.agent_outputs["executor"].append(exec_msg.content)
             log.write_executor(exec_msg.content, attempt)
@@ -129,6 +135,7 @@ def run_collab(
     today: str | None = None,
     timeout: int = 1800,
     run_id: str | None = None,
+    worker_backend: AgentBackend | None = None,
 ) -> SharedState:
     run_id = run_id or next_run_id(runs_dir, today=today)
     run_path = runs_dir / run_id
@@ -164,7 +171,8 @@ def run_collab(
             _implementation_loop(
                 state, run_path=run_path, log=log, worktree=worktree,
                 claude_backend=claude_backend, codex_backend=codex_backend,
-                test_cmd=test_cmd, max_revisions=max_revisions, timeout=timeout, printer=printer)
+                test_cmd=test_cmd, max_revisions=max_revisions, timeout=timeout, printer=printer,
+                worker_backend=worker_backend)
 
         feedback = human_gate(state, printer=printer)
         state.human_feedback = feedback
