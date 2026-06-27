@@ -24,6 +24,10 @@
 > `docs/superpowers/plans/2026-06-22-mat-phase0-tmux-runtime.md`。
 
 ### Docs
+- 新增 multi-agent 协作编排定位文档与下一阶段 Orchestrator Registry TDD 计划,明确 MACR 不做
+  "另一个 subagent",而是做跨平台编排、治理、验证、审计与长期沉淀层。`(b7a10a5)`
+  依据 `docs/multi_agent_orchestrator_design.md`、
+  `docs/superpowers/plans/2026-06-27-multi-agent-orchestrator-registry.md`。
 - 新增 WispTerm/CrayBot/tmux 源码借鉴笔记:`docs/wispterm-craybot-源码接口笔记.md`、`docs/tmux集成方案-多Agent终端运行时.md`。
 - 新增 Multi-Agent Term 架构设计 spec 与 Phase 0 TDD 计划(见上)。
 - 新增本 `CHANGELOG.md` 与开发指南 `AGENTS.md` / `CLAUDE.md`。
